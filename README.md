@@ -3,6 +3,10 @@
 App móvil del **trabajador** para el crédito de nómina DisGlobal. React Native + Expo (SDK 58) + Expo Router, TypeScript.
 Formas, tipografía (Poppins) y personajes 3D tomados del Figma *Pure Edu*; paleta financiera azul marino `#0F3D85` + verde esmeralda `#12B886`.
 
+![Pantallas](docs/capturas/00-todas.png)
+
+Capturas individuales en [`docs/capturas/`](docs/capturas/).
+
 ## Arrancar
 
 ```bash
