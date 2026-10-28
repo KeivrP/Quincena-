@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { ApiError, messageFor } from '../api/errors';
 import { appApi } from '../api/endpoints';
-import type { Quote } from '../api/types';
+import type { LoanQuote } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
 import { Illustration } from '../components/Illustration';
 import { Banner, Button, Card, OrangeHeader, Row, Screen, T, webNoOutline } from '../components/ui';
@@ -11,14 +11,17 @@ import { formatBs, formatUsd, isValidAmount, normalizeAmountInput } from '../lib
 import { formatCivilDate } from '../lib/validators';
 import { colors, fonts, radius, space } from '../theme';
 
-const DEFAULT_OPTIONS = [1, 2, 3, 4, 6];
+// Reasones de negocio que mandan a otra pantalla en vez de mostrarse como error genérico.
+const ONBOARDING_REASONS: Record<string, string> = {
+  credit_agreement_not_signed: '/onboarding/contract',
+  payout_account_not_registered: '/onboarding/payout',
+};
 
 export default function RequestCredit() {
   const { simulate } = useLocalSearchParams<{ simulate?: string }>();
   const { profile } = useAuth();
   const [raw, setRaw] = useState('');
-  const [installments, setInstallments] = useState(2);
-  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quote, setQuote] = useState<LoanQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -28,7 +31,7 @@ export default function RequestCredit() {
   const amount = normalizeAmountInput(raw);
   const valid = isValidAmount(amount);
 
-  // Cotizar es sin efectos: se recalcula al cambiar monto o cuotas (con debounce).
+  // Cotizar es sin efectos: se recalcula al cambiar el monto (con debounce).
   useEffect(() => {
     setQuote(null);
     setQuoteError(null);
@@ -37,7 +40,7 @@ export default function RequestCredit() {
     const t = setTimeout(async () => {
       setQuoting(true);
       try {
-        const q = await appApi.quote({ amount, installments });
+        const q = await appApi.quote(amount);
         if (id === seq.current) setQuote(q);
       } catch (e) {
         if (id === seq.current) setQuoteError(messageFor(e));
@@ -46,38 +49,65 @@ export default function RequestCredit() {
       }
     }, 450);
     return () => clearTimeout(t);
-  }, [amount, installments, valid]);
+  }, [amount, valid]);
 
   const submit = async () => {
     if (!quote || quote.would_be_rejected) return;
     setSending(true);
     setSendError(null);
     try {
-      const res = await appApi.requestCredit({ amount, installments });
-      router.replace({
-        pathname: '/result',
-        params: {
-          status: res.status,
-          id: res.id ?? '',
-          amount: res.amount ?? amount,
-          amount_bs: res.amount_bs ?? quote.amount_bs ?? '',
-          message: res.message ?? '',
-        },
-      });
+      const fxConfirmation = quote.fx_rate_confirmation_required
+        ? {
+            accepted_fx_rate_source_date: quote.fx_rate_source_date ?? quote.fx_rate_date,
+            accepted_usd_to_bs_rate: quote.usd_to_bs_rate,
+          }
+        : undefined;
+      const res = await appApi.requestCredit(amount, fxConfirmation);
+      if (res.status === 'disbursed') {
+        router.replace({
+          pathname: '/result',
+          params: {
+            status: 'disbursed',
+            id: res.loan.id,
+            amount: res.loan.principal_usd,
+            amount_bs: quote.total_payable_bs ?? '',
+          },
+        });
+      } else {
+        // 'in_review': el banco no confirmó a tiempo; no hay loan_id que mostrar.
+        router.replace({ pathname: '/result', params: { status: 'in_review', message: res.message } });
+      }
     } catch (e) {
+      if (e instanceof ApiError) {
+        const reason = e.reason;
+        if (reason === 'disbursement_failed') {
+          router.replace({ pathname: '/result', params: { status: 'rejected', message: messageFor(e) } });
+          return;
+        }
+        if (reason && ONBOARDING_REASONS[reason]) {
+          router.replace(ONBOARDING_REASONS[reason] as never);
+          return;
+        }
+        if (reason === 'fx_rate_changed') {
+          setQuote(null);
+          setSendError({
+            msg: 'La tasa cambió desde tu cotización. Vuelve a escribir el monto para cotizar de nuevo.',
+            retryable: false,
+          });
+          return;
+        }
+      }
       setSendError({ msg: messageFor(e), retryable: e instanceof ApiError && e.retryable });
     } finally {
       setSending(false);
     }
   };
 
-  const options = quote?.installment_options?.length ? quote.installment_options : DEFAULT_OPTIONS;
-
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <OrangeHeader
         title={simulate ? 'Simular crédito' : 'Solicitar crédito'}
-        subtitle={`Disponible: ${formatUsd(profile?.credit_available)}`}
+        subtitle={`Disponible: ${formatUsd(profile?.credit_available_usd)}`}
       />
       <Screen edges={['bottom']}>
         <Card>
@@ -102,28 +132,11 @@ export default function RequestCredit() {
                 <T variant="label">${v}</T>
               </Pressable>
             ))}
-            {profile?.credit_available ? (
-              <Pressable style={styles.chip} onPress={() => setRaw(profile.credit_available)}>
+            {profile?.credit_available_usd ? (
+              <Pressable style={styles.chip} onPress={() => setRaw(profile.credit_available_usd)}>
                 <T variant="label">Máximo</T>
               </Pressable>
             ) : null}
-          </View>
-
-          <T variant="label" color={colors.textMuted} style={{ marginTop: space.lg, marginBottom: space.sm }}>
-            Número de cuotas
-          </T>
-          <View style={{ flexDirection: 'row', gap: space.sm }}>
-            {options.map((n) => (
-              <Pressable
-                key={n}
-                onPress={() => setInstallments(n)}
-                style={[styles.inst, installments === n && styles.instActive]}
-              >
-                <T variant="h3" color={installments === n ? colors.white : colors.text}>
-                  {n}
-                </T>
-              </Pressable>
-            ))}
           </View>
         </Card>
 
@@ -143,22 +156,30 @@ export default function RequestCredit() {
                 Pagarás
               </T>
               <T variant="amount" style={{ fontSize: 28 }}>
-                {quote.installments} × {formatUsd(quote.installment_amount)}
+                {quote.installments_count} × {formatUsd(quote.installments[0]?.total_amount_usd)}
               </T>
               <View style={{ height: 1, backgroundColor: colors.border, marginVertical: space.sm }} />
-              <Row label="Recibes" value={formatUsd(quote.amount)} />
-              {quote.amount_bs ? <Row label="Equivalente" value={formatBs(quote.amount_bs)} /> : null}
-              {quote.exchange_rate ? <Row label="Tasa BCV" value={`Bs. ${quote.exchange_rate}`} /> : null}
-              {quote.first_due_date ? (
-                <Row label="Primera cuota" value={formatCivilDate(quote.first_due_date)} />
+              <Row label="Recibes" value={formatUsd(quote.principal_usd)} />
+              <Row label="Tasa BCV" value={`Bs. ${quote.usd_to_bs_rate}`} />
+              {quote.installments[0] ? (
+                <Row label="Primera cuota" value={formatCivilDate(quote.installments[0].due_date)} />
               ) : null}
-              <Row label="Total a pagar" value={formatUsd(quote.total)} strong />
+              <Row label="Total a pagar" value={formatUsd(quote.total_payable_usd)} strong />
+              <Row label="Equivalente en Bs" value={formatBs(quote.total_payable_bs)} />
+              {quote.fx_rate_is_stale ? (
+                <View style={{ marginTop: space.sm }}>
+                  <Banner
+                    tone="info"
+                    message={`La tasa BCV es de respaldo (${quote.fx_rate_age_days} día(s) de antigüedad). Al confirmar, aceptas usar esta misma tasa.`}
+                  />
+                </View>
+              ) : null}
               {quote.would_be_rejected ? (
                 <View style={{ marginTop: space.sm }}>
                   <Banner
                     tone="warning"
                     title="No podemos aprobar este monto"
-                    message={quote.rejection_reason ?? 'Prueba con un monto menor o más cuotas.'}
+                    message={quote.rejection_reason ?? 'Prueba con un monto menor.'}
                   />
                 </View>
               ) : null}
@@ -181,7 +202,7 @@ export default function RequestCredit() {
         ) : null}
 
         <Button
-          title={sendError?.retryable ? 'Reintentar' : quote ? `Recibir ${formatUsd(quote.amount)}` : 'Solicitar'}
+          title={sendError?.retryable ? 'Reintentar' : quote ? `Recibir ${formatUsd(quote.principal_usd)}` : 'Solicitar'}
           icon="flash"
           style={{ marginTop: space.lg }}
           disabled={!quote || quote.would_be_rejected || quoting}
@@ -230,16 +251,6 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: colors.primarySoft },
-  inst: {
-    flex: 1,
-    height: 48,
-    borderRadius: radius.md,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  instActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(27,29,41,0.55)',

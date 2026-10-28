@@ -4,44 +4,65 @@ import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { ApiError, messageFor } from '../api/errors';
 import { appApi } from '../api/endpoints';
-import type { CreditSummary, PaymentReport } from '../api/types';
+import type { Bank, Loan, PaymentTransaction } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
+import { BankPicker } from '../components/BankPicker';
 import { Banner, Button, Card, EmptyState, Field, OrangeHeader, Screen, T } from '../components/ui';
 import { formatUsd, isValidAmount, normalizeAmountInput } from '../lib/money';
 import { colors, radius, space } from '../theme';
 
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function ReportPayment() {
-  const params = useLocalSearchParams<{ creditId?: string; amount?: string }>();
+  const params = useLocalSearchParams<{ loanId?: string }>();
   const { profile } = useAuth();
-  const [credits, setCredits] = useState<CreditSummary[]>([]);
-  const [creditId, setCreditId] = useState(params.creditId ?? '');
-  const [amount, setAmount] = useState(params.amount ?? '');
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [loanId, setLoanId] = useState(params.loanId ?? '');
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [amount, setAmount] = useState('');
   const [reference, setReference] = useState('');
+  const [paymentDate, setPaymentDate] = useState(today());
+  const [payerBank, setPayerBank] = useState<Bank | null>(null);
+  const [payerAccount, setPayerAccount] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<PaymentReport | null>(null);
-  const pay = profile?.company_payment_account;
+  const [result, setResult] = useState<PaymentTransaction | null>(null);
+  const pay = profile?.payment_destination;
+  const payBankName = banks.find((b) => b.code === pay?.bank_code)?.name;
 
   useEffect(() => {
     appApi
-      .credits()
+      .loans()
       .then((list) => {
         const active = list.filter((c) => c.status === 'active');
-        setCredits(active);
-        if (!params.creditId && active[0]) setCreditId(active[0].id);
+        setLoans(active);
+        if (!params.loanId && active[0]) setLoanId(active[0].id);
       })
       .catch((e) => setError(messageFor(e)));
-  }, [params.creditId]);
+    appApi.banks().then(setBanks).catch(() => {});
+  }, [params.loanId]);
 
   const submit = async () => {
     const amt = normalizeAmountInput(amount);
-    if (!creditId) return setError('Elige el crédito que estás pagando.');
+    if (!loanId) return setError('Elige el crédito que estás pagando.');
     if (!isValidAmount(amt)) return setError('Escribe un monto válido.');
-    if (reference.trim().length < 4) return setError('Escribe la referencia del pago móvil.');
+    if (reference.trim().length < 1) return setError('Escribe la referencia del pago móvil.');
+    if (!payerBank) return setError('Elige el banco desde el que pagaste.');
+    if (payerAccount.trim().length < 1) return setError('Escribe el teléfono o cuenta desde donde pagaste.');
     setLoading(true);
     setError(null);
     try {
-      setResult(await appApi.reportPayment({ credit_id: creditId, amount: amt, reference: reference.trim() }));
+      setResult(
+        await appApi.reportPayment(loanId, {
+          amount_usd: amt,
+          reference: reference.trim(),
+          payment_date: paymentDate,
+          payer_bank_code: payerBank.code,
+          payer_account: payerAccount.trim(),
+        }),
+      );
     } catch (e) {
       setError(
         e instanceof ApiError && e.retryable ? `${messageFor(e)} Reintentar no duplica el abono.` : messageFor(e),
@@ -52,40 +73,21 @@ export default function ReportPayment() {
   };
 
   if (result) {
-    const ok = result.status === 'validated';
-    const pending = result.status === 'pending';
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <OrangeHeader title="Abono reportado" back={false} />
         <Screen edges={['bottom']}>
           <Card style={{ alignItems: 'center', padding: space.lg }}>
-            <Ionicons
-              name={ok ? 'checkmark-circle' : pending ? 'time' : 'close-circle'}
-              size={56}
-              color={ok ? colors.success : pending ? colors.warning : colors.danger}
-            />
+            <Ionicons name="checkmark-circle" size={56} color={colors.success} />
             <T variant="h2" style={{ marginTop: space.sm, textAlign: 'center' }}>
-              {ok ? 'Abono validado' : pending ? 'Validando con el banco' : 'No pudimos validar el pago'}
+              Abono validado
             </T>
             <T variant="amount" style={{ marginTop: space.xs }}>
-              {formatUsd(result.amount)}
+              {formatUsd(result.amount_usd)}
             </T>
-            <T color={colors.textMuted}>Ref. {result.reference}</T>
-            {result.message ? (
-              <T color={colors.textMuted} style={{ textAlign: 'center', marginTop: space.sm }}>
-                {result.message}
-              </T>
-            ) : null}
+            <T color={colors.textMuted}>Ref. {result.provider_reference}</T>
           </Card>
-          {!ok && !pending ? (
-            <Button
-              title="Corregir y reenviar"
-              variant="outline"
-              style={{ marginTop: space.lg }}
-              onPress={() => setResult(null)}
-            />
-          ) : null}
-          <Button title="Listo" style={{ marginTop: space.sm }} onPress={() => router.replace('/payments')} />
+          <Button title="Listo" style={{ marginTop: space.lg }} onPress={() => router.replace('/home')} />
         </Screen>
       </View>
     );
@@ -101,22 +103,22 @@ export default function ReportPayment() {
               1. Haz un pago móvil a
             </T>
             <T variant="h3" color={colors.white} style={{ marginTop: 4 }}>
-              {pay.bank_name ?? pay.bank_code} ({pay.bank_code})
+              {payBankName ?? pay.bank_code} ({pay.bank_code})
             </T>
             <T color={colors.white}>Teléfono {pay.phone}</T>
-            <T color={colors.white}>RIF {pay.rif}</T>
+            <T color={colors.white}>Cédula/RIF {pay.national_id}</T>
           </Card>
         ) : null}
 
         <T variant="label" color={colors.textMuted} style={{ marginTop: space.lg, marginBottom: space.sm }}>
           2. ¿Qué crédito estás pagando?
         </T>
-        {credits.length ? (
+        {loans.length ? (
           <View style={{ gap: space.sm, marginBottom: space.md }}>
-            {credits.map((c) => (
+            {loans.map((c) => (
               <Pressable
                 key={c.id}
-                onPress={() => setCreditId(c.id)}
+                onPress={() => setLoanId(c.id)}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -124,20 +126,18 @@ export default function ReportPayment() {
                   borderRadius: radius.md,
                   backgroundColor: colors.white,
                   borderWidth: 1.5,
-                  borderColor: creditId === c.id ? colors.primary : colors.border,
+                  borderColor: loanId === c.id ? colors.primary : colors.border,
                 }}
               >
                 <Ionicons
-                  name={creditId === c.id ? 'radio-button-on' : 'radio-button-off'}
+                  name={loanId === c.id ? 'radio-button-on' : 'radio-button-off'}
                   size={20}
-                  color={creditId === c.id ? colors.primary : colors.textMuted}
+                  color={loanId === c.id ? colors.primary : colors.textMuted}
                 />
                 <View style={{ flex: 1, marginLeft: space.sm }}>
-                  <T variant="label">
-                    {c.id} · {formatUsd(c.amount)}
-                  </T>
+                  <T variant="label">{formatUsd(c.principal_usd)}</T>
                   <T variant="caption" color={colors.textMuted}>
-                    Saldo {formatUsd(c.outstanding)} · cuota {formatUsd(c.installment_amount)}
+                    {c.installments_count} cuotas · total {formatUsd(c.total_payable_usd)}
                   </T>
                 </View>
               </Pressable>
@@ -149,7 +149,7 @@ export default function ReportPayment() {
           </Card>
         )}
 
-        {credits.length ? (
+        {loans.length ? (
           <>
             <T variant="label" color={colors.textMuted} style={{ marginBottom: space.sm }}>
               3. Datos del pago
@@ -176,6 +176,24 @@ export default function ReportPayment() {
                 onChangeText={setReference}
                 placeholder="Ej. 004512"
                 hint="Los últimos dígitos que te dio tu banco."
+              />
+              <Field
+                label="Fecha del pago"
+                icon="calendar-outline"
+                value={paymentDate}
+                onChangeText={setPaymentDate}
+                placeholder="2026-10-28"
+                hint="Formato AAAA-MM-DD."
+              />
+              <BankPicker banks={banks} value={payerBank} onChange={setPayerBank} />
+              <Field
+                label="Tu teléfono/cuenta de origen"
+                icon="call-outline"
+                keyboardType="phone-pad"
+                value={payerAccount}
+                onChangeText={setPayerAccount}
+                placeholder="0414 1234567"
+                hint="Desde donde hiciste el pago móvil (puede no ser el tuyo registrado)."
               />
               <Button title="Reportar abono" onPress={submit} loading={loading} />
             </Card>

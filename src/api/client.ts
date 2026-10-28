@@ -107,13 +107,13 @@ async function validAccessToken(): Promise<string> {
   }
 }
 
-export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+async function authedFetch(path: string, opts: RequestOptions): Promise<Response> {
   const auth = opts.auth ?? true;
-  if (!auth) return parse<T>(await rawFetch(path, opts));
+  if (!auth) return rawFetch(path, opts);
 
   const token = await validAccessToken();
   const res = await rawFetch(path, opts, token);
-  if (res.status !== 401) return parse<T>(res);
+  if (res.status !== 401) return res;
 
   // 401 con token "vigente": intentamos un refresh (compartido) y reintentamos una sola vez.
   const s = await loadSession();
@@ -127,5 +127,23 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
   }
   const retry = await rawFetch(path, opts, fresh.accessToken);
   if (retry.status === 401) return expireSession();
-  return parse<T>(retry);
+  return retry;
+}
+
+export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  return parse<T>(await authedFetch(path, opts));
+}
+
+/**
+ * Igual que `request`, pero para endpoints donde un status 2xx puede traer un
+ * cuerpo que NO es `T` (ej. `POST /app/loans` responde 202 con un problem+json
+ * de "desembolso en revisión" en vez de la respuesta normal) — expone el
+ * status para que el caller decida cómo interpretarlo.
+ */
+export async function requestWithStatus<T>(
+  path: string,
+  opts: RequestOptions = {},
+): Promise<{ status: number; data: T }> {
+  const res = await authedFetch(path, opts);
+  return { status: res.status, data: await parse<T>(res) };
 }

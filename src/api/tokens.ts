@@ -23,7 +23,12 @@ function decodeJwtExp(token: string): number | null {
 
 export function sessionFromPair(pair: TokenPair): StoredSession {
   const fromJwt = decodeJwtExp(pair.access_token);
-  const fromTtl = Date.now() + (pair.expires_in ?? 15 * 60) * 1000;
+  const fromTtl = Date.now() + 15 * 60 * 1000;
+  if (!pair.refresh_token) {
+    // Solo pasa con `X-Client: portal` (refresh en cookie HttpOnly); este cliente
+    // móvil nunca manda ese header, así que el servidor siempre lo incluye aquí.
+    throw new Error('El servidor no devolvió refresh_token.');
+  }
   return {
     accessToken: pair.access_token,
     refreshToken: pair.refresh_token,

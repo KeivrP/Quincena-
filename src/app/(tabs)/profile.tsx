@@ -1,6 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Alert, Platform, Pressable, View } from 'react-native';
+import { appApi } from '../../api/endpoints';
+import type { PayoutAccount } from '../../api/types';
 import { useAuth } from '../../auth/AuthProvider';
 import { Card, OrangeHeader, Screen, T } from '../../components/ui';
 import { colors, space } from '../../theme';
@@ -15,7 +18,16 @@ type Item = {
 
 export default function Profile() {
   const { profile, signOut } = useAuth();
-  const acct = profile?.payout_account;
+  const [acct, setAcct] = useState<PayoutAccount | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      appApi
+        .payoutAccount()
+        .then(setAcct)
+        .catch(() => setAcct(null));
+    }, []),
+  );
 
   const confirmLogout = () => {
     if (Platform.OS === 'web') return signOut();
@@ -29,13 +41,13 @@ export default function Profile() {
     {
       icon: 'phone-portrait-outline',
       label: 'Datos de cobro',
-      detail: acct ? `${acct.bank_name ?? acct.bank_code} · ${acct.phone}` : 'Sin registrar',
+      detail: acct?.registered ? `${acct.bank_code} · ${acct.phone}` : 'Sin registrar',
       onPress: () => router.push('/onboarding/payout'),
     },
     {
       icon: 'document-text-outline',
       label: 'Contrato marco',
-      detail: profile?.contract_status === 'signed' ? 'Firmado' : 'Pendiente',
+      detail: profile?.credit_agreement_signed ? 'Firmado' : 'Pendiente',
       onPress: () => router.push('/onboarding/contract'),
     },
     { icon: 'lock-closed-outline', label: 'Cambiar contraseña', onPress: () => router.push('/forgot-password') },
@@ -69,7 +81,7 @@ export default function Profile() {
               {profile?.email}
             </T>
             <T variant="caption" color={colors.onPrimaryMuted}>
-              {profile?.cedula} · {profile?.company_name}
+              {profile?.national_id} · {profile?.company_legal_name}
             </T>
           </View>
         </View>

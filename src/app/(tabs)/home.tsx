@@ -4,7 +4,9 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { appApi } from '../../api/endpoints';
 import { messageFor } from '../../api/errors';
+import type { Loan } from '../../api/types';
 import { useAuth } from '../../auth/AuthProvider';
 import { CreditCard } from '../../components/CreditCard';
 import { Banner, Card, EmptyState, ProgressBar, T } from '../../components/ui';
@@ -20,13 +22,15 @@ const ACTIONS = [
 
 export default function Home() {
   const { profile, refreshProfile } = useAuth();
+  const [loans, setLoans] = useState<Loan[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       setError(null);
-      await refreshProfile();
+      const [, loanList] = await Promise.all([refreshProfile(), appApi.loans()]);
+      setLoans(loanList);
     } catch (e) {
       setError(messageFor(e));
     }
@@ -39,9 +43,9 @@ export default function Home() {
   );
 
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
-  const usedPct = ratio(profile?.credit_used, profile?.credit_limit);
-  const credits = profile?.active_credits ?? [];
-  const pay = profile?.company_payment_account;
+  const usedPct = ratio(profile?.credit_used_usd, profile?.credit_limit_usd);
+  const active = loans.filter((l) => l.status === 'active');
+  const pay = profile?.payment_destination;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -68,7 +72,7 @@ export default function Home() {
             </View>
             <View style={{ flex: 1, marginLeft: space.sm }}>
               <T variant="caption" color={colors.onPrimaryMuted}>
-                {profile?.company_name ?? 'Bienvenido'}
+                {profile?.company_legal_name ?? 'Bienvenido'}
               </T>
               <T variant="h3" color={colors.white}>
                 Hola, {firstName}
@@ -89,17 +93,17 @@ export default function Home() {
               Cupo disponible
             </T>
             <T variant="amount" color={colors.white} style={{ marginTop: 2 }}>
-              {formatUsd(profile?.credit_available)}
+              {formatUsd(profile?.credit_available_usd)}
             </T>
             <View style={{ marginTop: space.md }}>
               <ProgressBar value={usedPct} color={colors.accent} track="rgba(255,255,255,0.15)" />
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: space.sm }}>
               <T variant="caption" color="rgba(255,255,255,0.7)">
-                Usado {formatUsd(profile?.credit_used)}
+                Usado {formatUsd(profile?.credit_used_usd)}
               </T>
               <T variant="caption" color="rgba(255,255,255,0.7)">
-                Límite {formatUsd(profile?.credit_limit)}
+                Límite {formatUsd(profile?.credit_limit_usd)}
               </T>
             </View>
           </LinearGradient>
@@ -125,14 +129,14 @@ export default function Home() {
 
           <View style={styles.sectionHead}>
             <T variant="h3">Créditos activos</T>
-            {credits.length ? (
+            {active.length ? (
               <T variant="label" color={colors.primary} onPress={() => router.push('/credits')}>
                 Ver todos
               </T>
             ) : null}
           </View>
-          {credits.length ? (
-            credits.slice(0, 3).map((c) => <CreditCard key={c.id} credit={c} />)
+          {active.length ? (
+            active.slice(0, 3).map((c) => <CreditCard key={c.id} credit={c} />)
           ) : (
             <Card>
               <EmptyState
@@ -152,9 +156,8 @@ export default function Home() {
                 Haz un pago móvil a la cuenta de tu empresa y repórtalo aquí:
               </T>
               <T variant="label">
-                {pay.bank_name ?? pay.bank_code} · {pay.phone}
+                {pay.bank_code} · {pay.phone}
               </T>
-              <T variant="label">RIF {pay.rif}</T>
             </Card>
           ) : null}
         </View>

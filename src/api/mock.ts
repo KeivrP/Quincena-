@@ -1,9 +1,11 @@
 import Big from 'big.js';
-import type { CreditDetail, Installment, PaymentReport, Profile } from './types';
+import type { Loan, LoanDetail, LoanInstallment, Profile } from './types';
 
 // Servidor simulado en memoria para ver la app sin credenciales (EXPO_PUBLIC_USE_MOCK=1).
 // Reproduce los valores mágicos del banco simulado del backend:
-//   monto terminado en .14 → rechazo del banco · .13 → en revisión · referencia SIMFAIL… → no concilia.
+//   monto terminado en .14 → rechazo del banco (502) · .13 → en revisión (202) ·
+//   referencia SIMFAIL… → el banco no concilia el abono (422).
+// Formas calcadas de `src/disglobal/modules/*/schemas.py` del backend real.
 
 const RATE = '38.50';
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -11,12 +13,11 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const state = {
   password: 'Temporal123',
   mustChange: true,
-  contractSigned: false,
-  payout: null as Profile['payout_account'],
+  agreementSigned: false,
+  payout: null as { bank_code: string; phone: string; national_id: string } | null,
   limit: '600.00',
-  credits: [] as CreditDetail[],
-  payments: [] as PaymentReport[],
-  seenKeys: new Map<string, unknown>(),
+  loans: [] as LoanDetail[],
+  seenKeys: new Map<string, { status: number; body: unknown }>(),
 };
 
 function json(status: number, body: unknown, problem = false): Response {
@@ -26,39 +27,59 @@ function json(status: number, body: unknown, problem = false): Response {
   });
 }
 
-const problem = (status: number, title: string, detail: string, reason?: string) =>
-  json(status, { type: 'about:blank', title, status, detail, extra: reason ? { reason } : {} }, true);
+const problem = (status: number, title: string, detail: string, code: string) =>
+  json(status, { type: `https://disglobal.dev/errors/${code}`, title, status, code, detail }, true);
 
 function fakeJwt(): string {
   const payload = globalThis.btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 15 * 60 }));
   return `x.${payload}.y`;
 }
 
-const used = () => state.credits.reduce((acc, c) => acc.plus(c.status === 'active' ? c.outstanding : '0'), new Big(0));
+const used = () =>
+  state.loans.reduce(
+    (acc, l) =>
+      acc.plus(l.status === 'active' ? l.installments.reduce((a, i) => a.plus(i.outstanding_usd), new Big(0)) : 0),
+    new Big(0),
+  );
 
-function addMonths(months: number): string {
+function addDays(days: number): string {
   const d = new Date();
-  d.setMonth(d.getMonth() + months);
+  d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
-function quote(amount: string, installments: number) {
-  const a = new Big(amount);
+const INSTALLMENTS_COUNT = 3;
+const SAMPLE_PDF = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+
+function buildQuote(principal: string) {
+  const a = new Big(principal || '0');
   const total = a.times(1.08).round(2);
-  const inst = total.div(installments).round(2);
+  const perInstallment = total.div(INSTALLMENTS_COUNT).round(2);
   const available = new Big(state.limit).minus(used());
   const over = a.gt(available);
+  const installments = Array.from({ length: INSTALLMENTS_COUNT }, (_, i) => ({
+    sequence_number: i + 1,
+    due_date: addDays((i + 1) * 15),
+    period_key: `2026-Q${i + 1}`,
+    principal_component_usd: a.div(INSTALLMENTS_COUNT).round(2).toFixed(2),
+    interest_or_fee_component_usd: perInstallment.minus(a.div(INSTALLMENTS_COUNT).round(2)).toFixed(2),
+    total_amount_usd: perInstallment.toFixed(2),
+    total_amount_bs: perInstallment.times(RATE).toFixed(2),
+  }));
   return {
-    amount: a.toFixed(2),
+    principal_usd: a.toFixed(2),
+    installments_count: INSTALLMENTS_COUNT,
+    total_payable_usd: total.toFixed(2),
+    total_charge_usd: total.minus(a).toFixed(2),
+    fx_rate_date: new Date().toISOString().slice(0, 10),
+    usd_to_bs_rate: RATE,
+    total_payable_bs: total.times(RATE).toFixed(2),
     installments,
-    installment_amount: inst.toFixed(2),
-    total: total.toFixed(2),
-    amount_bs: a.times(RATE).toFixed(2),
-    exchange_rate: RATE,
-    first_due_date: addMonths(1),
-    installment_options: [1, 2, 3, 4, 6],
     would_be_rejected: over,
     rejection_reason: over ? `El monto supera tu cupo disponible ($${available.toFixed(2)}).` : null,
+    fx_rate_is_stale: false,
+    fx_rate_age_days: 0,
+    fx_rate_confirmation_required: false,
   };
 }
 
@@ -66,27 +87,26 @@ function profile(): Profile {
   const u = used();
   return {
     full_name: 'María Fernanda Pérez',
+    national_id: 'V18765432',
     email: 'maria.perez@demo.com',
-    cedula: 'V18765432',
-    company_name: 'Distribuidora Demo QA',
-    must_change_password: state.mustChange,
-    credit_limit: state.limit,
-    credit_used: u.toFixed(2),
-    credit_available: new Big(state.limit).minus(u).toFixed(2),
-    contract_status: state.contractSigned ? 'signed' : 'pending',
-    payout_status: state.payout ? 'registered' : 'pending',
-    payout_account: state.payout,
-    company_payment_account: {
-      bank_code: '0171',
-      bank_name: 'Banco Activo',
-      phone: '04141234567',
-      rif: 'J-40123456-7',
-    },
-    active_credits: state.credits.filter((c) => c.status === 'active'),
+    company_legal_name: 'Distribuidora Demo QA, C.A.',
+    employment_status: 'active',
+    payment_frequency: 'monthly',
+    salary_per_period_usd: '400.00',
+    installments_count: INSTALLMENTS_COUNT,
+    credit_limit_usd: state.limit,
+    credit_used_usd: u.toFixed(2),
+    credit_available_usd: new Big(state.limit).minus(u).toFixed(2),
+    credit_agreement_signed: state.agreementSigned,
+    payout_registered: !!state.payout,
+    payment_destination: { bank_code: '0171', phone: '04141234567', national_id: 'J-40123456-7' },
   };
 }
 
-const SAMPLE_PDF = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+function toLoan(l: LoanDetail): Loan {
+  const { installments: _installments, receipt_download_url: _r, ...loan } = l;
+  return loan;
+}
 
 export async function mockRequest(
   method: string,
@@ -94,28 +114,36 @@ export async function mockRequest(
   body: any,
   headers: Record<string, string>,
 ): Promise<Response> {
-  await delay(path === '/app/credits' && method === 'POST' ? 1800 : 350);
+  await delay(path === '/app/loans' && method === 'POST' ? 1800 : 350);
   const idem = headers['Idempotency-Key'];
-  if (idem && state.seenKeys.has(idem)) return json(200, state.seenKeys.get(idem));
-  const remember = (payload: unknown) => {
-    if (idem) state.seenKeys.set(idem, payload);
-    return json(200, payload);
+  if (idem && state.seenKeys.has(idem)) {
+    const cached = state.seenKeys.get(idem)!;
+    return json(cached.status, cached.body, cached.status >= 400);
+  }
+  const remember = (status: number, payload: unknown, isProblem = false) => {
+    if (idem) state.seenKeys.set(idem, { status, body: payload });
+    return json(status, payload, isProblem);
   };
 
   const route = `${method} ${path}`;
   switch (true) {
     case route === 'POST /auth/login': {
       if (body.password !== state.password && body.password !== 'Demo1234')
-        return problem(401, 'No autorizado', 'Credenciales inválidas', 'invalid_credentials');
+        return problem(401, 'No autorizado', 'Correo o contraseña incorrectos.', 'unauthorized');
+      return json(200, { access_token: fakeJwt(), refresh_token: 'r', token_type: 'bearer' });
+    }
+    case route === 'GET /auth/me':
       return json(200, {
-        access_token: fakeJwt(),
-        refresh_token: 'r',
-        expires_in: 900,
+        id: '00000000-0000-0000-0000-000000000001',
+        tenant_id: '00000000-0000-0000-0000-00000000000a',
+        email: 'maria.perez@demo.com',
+        full_name: 'María Fernanda Pérez',
+        role: 'employee',
+        mfa_enabled: false,
         must_change_password: state.mustChange,
       });
-    }
     case route === 'POST /auth/refresh':
-      return json(200, { access_token: fakeJwt(), refresh_token: 'r2', expires_in: 900 });
+      return json(200, { access_token: fakeJwt(), refresh_token: 'r2', token_type: 'bearer' });
     case route === 'POST /auth/logout':
       return json(204, undefined);
     case route === 'POST /auth/change-password':
@@ -123,18 +151,29 @@ export async function mockRequest(
       state.mustChange = false;
       return json(204, undefined);
     case route === 'POST /auth/password-reset/request':
+      return json(202, { message: 'Si el correo está registrado, enviamos un código de 6 dígitos.' });
     case route === 'POST /auth/password-reset/confirm':
       if (body.code && body.code !== '123456')
-        return problem(400, 'Código inválido', 'El código no es válido o venció.');
+        return problem(422, 'Código inválido', 'El código es inválido o expiró.', 'invalid_or_expired_code');
       if (body.new_password) state.password = body.new_password;
       return json(204, undefined);
     case route === 'GET /app/profile':
       return json(200, profile());
-    case route === 'GET /app/contract':
-      return json(200, { status: state.contractSigned ? 'signed' : 'pending', pdf_url: SAMPLE_PDF });
-    case route === 'POST /app/contract/sign':
-      state.contractSigned = true;
-      return remember({ status: 'signed', pdf_url: SAMPLE_PDF, signed_at: new Date().toISOString() });
+    case route === 'GET /app/credit-agreement':
+      return json(200, {
+        signed: state.agreementSigned,
+        pdf_sha256: 'a'.repeat(64),
+        download_url: SAMPLE_PDF,
+        accepted_at: state.agreementSigned ? new Date().toISOString() : null,
+      });
+    case route === 'POST /app/credit-agreement/accept':
+      state.agreementSigned = true;
+      return remember(200, {
+        signed: true,
+        pdf_sha256: 'a'.repeat(64),
+        download_url: SAMPLE_PDF,
+        accepted_at: new Date().toISOString(),
+      });
     case route === 'GET /app/banks':
       return json(200, [
         { code: '0102', name: 'Banco de Venezuela' },
@@ -144,78 +183,143 @@ export async function mockRequest(
         { code: '0171', name: 'Banco Activo' },
         { code: '0191', name: 'BNC' },
       ]);
-    case route === 'PUT /app/payout-account':
-      state.payout = body;
-      return json(200, body);
-    case route === 'POST /app/credits/quote':
-      return json(200, quote(body.amount, body.installments));
-    case route === 'POST /app/credits': {
-      const q = quote(body.amount, body.installments);
-      if (q.would_be_rejected) return problem(422, 'Cupo insuficiente', q.rejection_reason!, 'limit_exceeded');
-      if (q.amount.endsWith('.14'))
-        return remember({
-          status: 'rejected',
-          message: 'El banco rechazó la transferencia. No se descontó nada de tu cupo.',
-        });
-      const id = `CR-${1000 + state.credits.length + 1}`;
-      const schedule: Installment[] = Array.from({ length: q.installments }, (_, i) => ({
-        number: i + 1,
-        due_date: addMonths(i + 1),
-        amount: q.installment_amount,
-        paid_amount: '0.00',
-        status: 'pending',
-      }));
-      const inReview = q.amount.endsWith('.13');
-      state.credits.unshift({
-        id,
-        amount: q.amount,
-        amount_bs: q.amount_bs,
-        exchange_rate: RATE,
-        outstanding: q.total,
-        status: inReview ? 'in_review' : 'active',
-        installments: q.installments,
-        installment_amount: q.installment_amount,
-        next_due_date: schedule[0].due_date,
-        created_at: new Date().toISOString(),
-        schedule,
-        receipt_available: !inReview,
+    case route === 'GET /app/payout-account':
+      return json(200, {
+        registered: !!state.payout,
+        bank_code: state.payout?.bank_code ?? null,
+        phone: state.payout?.phone ?? null,
+        national_id: state.payout?.national_id ?? null,
+        registered_at: state.payout ? new Date().toISOString() : null,
       });
-      return remember({ id, status: inReview ? 'in_review' : 'disbursed', amount: q.amount, amount_bs: q.amount_bs });
-    }
-    case route === 'GET /app/credits':
-      return json(200, state.credits);
-    case /^GET \/app\/credits\/[^/]+\/receipt$/.test(route):
-      return json(200, { pdf_url: SAMPLE_PDF });
-    case /^GET \/app\/credits\/[^/]+$/.test(route): {
-      const c = state.credits.find((x) => x.id === decodeURIComponent(path.split('/').pop()!));
-      return c ? json(200, c) : problem(404, 'No encontrado', 'El crédito no existe.');
-    }
-    case route === 'POST /app/payments': {
-      const fail = String(body.reference).toUpperCase().startsWith('SIMFAIL');
-      const p: PaymentReport = {
-        id: `AB-${state.payments.length + 1}`,
-        status: fail ? 'rejected' : 'validated',
-        amount: body.amount,
-        reference: body.reference,
-        message: fail ? 'No encontramos ese pago en el banco. Verifica la referencia.' : 'Abono validado con el banco.',
+    case route === 'PUT /app/payout-account':
+      state.payout = { bank_code: body.bank_code, phone: body.phone, national_id: body.national_id };
+      return json(200, {
+        registered: true,
+        bank_code: state.payout.bank_code,
+        phone: state.payout.phone,
+        national_id: state.payout.national_id,
+        registered_at: new Date().toISOString(),
+      });
+    case route === 'POST /app/loans/quote':
+      return json(200, buildQuote(body.principal_usd));
+    case route === 'POST /app/loans': {
+      const q = buildQuote(body.principal_usd);
+      if (q.would_be_rejected)
+        return problem(422, 'Cupo insuficiente', q.rejection_reason!, 'credit_limit_exceeded');
+      if (q.principal_usd.endsWith('.14'))
+        return problem(
+          502,
+          'El banco no pudo procesar el desembolso',
+          'El banco rechazó la transferencia. No se descontó nada de tu cupo.',
+          'disbursement_failed',
+        );
+      if (q.principal_usd.endsWith('.13'))
+        return remember(
+          202,
+          {
+            type: 'https://disglobal.dev/errors/disbursement_pending_review',
+            title: 'Desembolso en revisión',
+            status: 202,
+            code: 'disbursement_pending_review',
+            detail:
+              'No pudimos confirmar tu desembolso con el banco a tiempo. Tu solicitud quedó registrada y un administrador la revisará en breve.',
+          },
+          true,
+        );
+      const id = `${state.loans.length + 1}`.padStart(8, '0') + '-0000-0000-0000-000000000000';
+      const now = new Date().toISOString();
+      const installments: LoanInstallment[] = q.installments.map((i) => ({
+        sequence_number: i.sequence_number,
+        due_date: i.due_date,
+        period_key: i.period_key,
+        principal_component_usd: i.principal_component_usd,
+        interest_or_fee_component_usd: i.interest_or_fee_component_usd,
+        total_amount_usd: i.total_amount_usd,
+        status: 'scheduled',
+        paid_principal_usd: '0.00',
+        paid_fee_interest_usd: '0.00',
+        mora_accrued_usd: '0.00',
+        mora_paid_usd: '0.00',
+        outstanding_usd: i.total_amount_usd,
+        overdue_since: null,
+        paid_at: null,
+      }));
+      const loan: LoanDetail = {
+        id,
+        employee_id: '00000000-0000-0000-0000-000000000001',
+        credit_product_id: '00000000-0000-0000-0000-000000000002',
+        status: 'active',
+        principal_usd: q.principal_usd,
+        installments_count: q.installments_count,
+        total_payable_usd: q.total_payable_usd,
+        charge_model_snapshot: 'flat_fee',
+        rate_percent_snapshot: '8.000',
+        payment_frequency_snapshot: 'monthly',
+        fx_rate_at_disbursement: RATE,
+        fx_rate_date: q.fx_rate_date,
+        requested_at: now,
+        disbursed_at: now,
+        paid_off_at: null,
+        created_at: now,
+        installments,
+        receipt_download_url: SAMPLE_PDF,
       };
-      if (!fail) {
-        const c = state.credits.find((x) => x.id === body.credit_id);
-        if (c) {
-          const left = new Big(c.outstanding).minus(body.amount);
-          c.outstanding = (left.lt(0) ? new Big(0) : left).toFixed(2);
-          const next = c.schedule.find((s) => s.status !== 'paid');
-          if (next) next.status = 'paid';
-          if (new Big(c.outstanding).eq(0)) c.status = 'paid';
-          c.next_due_date = c.schedule.find((s) => s.status !== 'paid')?.due_date ?? null;
+      state.loans.unshift(loan);
+      return remember(200, {
+        loan: toLoan(loan),
+        receipt_download_url: SAMPLE_PDF,
+        receipt_pdf_sha256: 'b'.repeat(64),
+      });
+    }
+    case route === 'GET /app/loans':
+      return json(
+        200,
+        state.loans.map(toLoan),
+      );
+    case /^GET \/app\/loans\/[^/]+$/.test(route): {
+      const l = state.loans.find((x) => x.id === decodeURIComponent(path.split('/').pop()!));
+      return l ? json(200, l) : problem(404, 'Recurso no encontrado', 'El préstamo no existe.', 'not_found');
+    }
+    case /^POST \/app\/loans\/[^/]+\/payments$/.test(route): {
+      const loanId = decodeURIComponent(path.split('/')[3]);
+      const fail = String(body.reference).toUpperCase().startsWith('SIMFAIL');
+      if (fail)
+        return problem(
+          422,
+          'El banco no pudo validar este pago',
+          'El banco no pudo validar este pago con los datos reportados. Verifica la referencia, el monto y la fecha.',
+          'payment_not_validated',
+        );
+      const loan = state.loans.find((x) => x.id === loanId);
+      if (loan) {
+        let remaining = new Big(body.amount_usd as string);
+        for (const inst of loan.installments) {
+          if (remaining.lte(0)) break;
+          if (inst.status === 'paid') continue;
+          const instOutstanding = new Big(inst.outstanding_usd);
+          const apply = remaining.lt(instOutstanding) ? remaining : instOutstanding;
+          inst.paid_principal_usd = new Big(inst.paid_principal_usd).plus(apply).toFixed(2);
+          inst.outstanding_usd = new Big(inst.outstanding_usd).minus(apply).toFixed(2);
+          remaining = remaining.minus(apply);
+          if (new Big(inst.outstanding_usd).eq(0)) {
+            inst.status = 'paid';
+            inst.paid_at = new Date().toISOString();
+          }
+        }
+        if (loan.installments.every((i) => i.status === 'paid')) {
+          loan.status = 'paid_off';
+          loan.paid_off_at = new Date().toISOString();
         }
       }
-      state.payments.unshift(p);
-      return remember(p);
+      return remember(200, {
+        id: `${Date.now()}`,
+        loan_id: loanId,
+        amount_usd: body.amount_usd,
+        provider_reference: body.reference,
+        confirmed_at: new Date().toISOString(),
+      });
     }
-    case route === 'GET /app/payments':
-      return json(200, state.payments);
     default:
-      return problem(404, 'No encontrado', `Ruta simulada inexistente: ${route}`);
+      return problem(404, 'No encontrado', `Ruta simulada inexistente: ${route}`, 'not_found');
   }
 }

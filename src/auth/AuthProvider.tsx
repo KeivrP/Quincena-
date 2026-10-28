@@ -28,7 +28,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshProfile = useCallback(async () => {
     const p = await appApi.profile();
     setProfile(p);
-    if (p.must_change_password !== undefined) setMustChange(p.must_change_password);
     return p;
   }, []);
 
@@ -58,10 +57,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(
     async (email: string, password: string) => {
-      const res = await authApi.login(email.trim().toLowerCase(), password);
-      await saveSession(res);
-      // El servidor no bloquea nada con must_change_password: la app es quien lo fuerza.
-      const must = !!res.must_change_password;
+      const pair = await authApi.login(email.trim().toLowerCase(), password);
+      await saveSession(pair);
+      // El login NO trae must_change_password; sale de /auth/me (CurrentUser).
+      const me = await authApi.me();
+      const must = me.must_change_password;
       await secureStorage.set(MUST_CHANGE_KEY, must ? '1' : '0');
       setMustChange(must);
       await refreshProfile();
@@ -105,7 +105,7 @@ export function useAuth(): AuthState {
 /** Siguiente paso obligatorio del onboarding, o null si ya puede usar la app. */
 export function nextOnboardingStep(profile: Profile | null, mustChange: boolean) {
   if (mustChange) return '/onboarding/change-password' as const;
-  if (profile && profile.contract_status !== 'signed') return '/onboarding/contract' as const;
-  if (profile && profile.payout_status !== 'registered') return '/onboarding/payout' as const;
+  if (profile && !profile.credit_agreement_signed) return '/onboarding/contract' as const;
+  if (profile && !profile.payout_registered) return '/onboarding/payout' as const;
   return null;
 }
