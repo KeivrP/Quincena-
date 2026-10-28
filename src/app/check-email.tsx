@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
-import { Image, View } from 'react-native';
+import { View } from 'react-native';
+import { Illustration } from '../components/Illustration';
 import { Button, Card, OrangeHeader, Screen, T } from '../components/ui';
 import { colors, space } from '../theme';
 
@@ -20,11 +21,14 @@ export default function CheckEmail() {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <OrangeHeader title="Activa tu cuenta" subtitle="Revisa tu correo para empezar" />
       <Screen edges={[]}>
-        <View style={{ alignItems: 'center' }}>
-          <Image
-            source={require('../../assets/images/hero-phone.png')}
-            style={{ width: 170, height: 190 }}
-            resizeMode="contain"
+        <View style={{ alignItems: 'center', marginVertical: space.md }}>
+          <Illustration
+            icon="mail-unread"
+            size={170}
+            badges={[
+              { icon: 'key', color: colors.accent },
+              { icon: 'lock-closed', color: colors.primary },
+            ]}
           />
         </View>
         <Card>

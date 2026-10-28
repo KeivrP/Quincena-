@@ -1,10 +1,11 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { ApiError, messageFor } from '../api/errors';
 import { appApi } from '../api/endpoints';
 import type { Quote } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
+import { Illustration } from '../components/Illustration';
 import { Banner, Button, Card, OrangeHeader, Row, Screen, T, webNoOutline } from '../components/ui';
 import { formatBs, formatUsd, isValidAmount, normalizeAmountInput } from '../lib/money';
 import { formatCivilDate } from '../lib/validators';
@@ -194,13 +195,16 @@ export default function RequestCredit() {
       <Modal visible={sending} transparent animationType="fade">
         <View style={styles.overlay}>
           <View style={styles.overlayCard}>
-            <Image
-              source={require('../../assets/images/hero-phone.png')}
-              style={{ width: 130, height: 140 }}
-              resizeMode="contain"
+            <Illustration
+              icon="paper-plane"
+              spinning
+              size={170}
+              badges={[
+                { icon: 'cash', color: colors.accent },
+                { icon: 'phone-portrait', color: colors.primary },
+              ]}
             />
-            <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: space.md }} />
-            <T variant="h3" style={{ marginTop: space.md, textAlign: 'center' }}>
+            <T variant="h3" style={{ marginTop: space.lg, textAlign: 'center' }}>
               Enviando tu dinero…
             </T>
             <T color={colors.textMuted} style={{ textAlign: 'center' }}>

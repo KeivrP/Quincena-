@@ -1,23 +1,46 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Image, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useState, type ComponentProps } from 'react';
+import { Image, StyleSheet, View, useWindowDimensions, type ImageSourcePropType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Illustration } from '../components/Illustration';
 import { Button, Logo, RoundArrowButton, T } from '../components/ui';
 import { colors, space } from '../theme';
 
-const SLIDES = [
+type IconName = ComponentProps<typeof Illustration>['icon'];
+type Slide = {
+  title: string;
+  text: string;
+  image?: ImageSourcePropType;
+  illustration?: { icon: IconName; badges: { icon: IconName; color: string }[] };
+};
+
+const SLIDES: Slide[] = [
   {
-    image: require('../../assets/images/hero-phone.png'),
+    image: require('../../assets/images/hero-book.png'),
     title: 'Crédito al instante',
     text: 'Pide un adelanto sobre tu nómina y recíbelo en tu pago móvil en segundos.',
   },
   {
-    image: require('../../assets/images/hero-phone-flip.png'),
+    illustration: {
+      icon: 'phone-portrait',
+      badges: [
+        { icon: 'calculator', color: colors.primary },
+        { icon: 'cash', color: colors.accent },
+        { icon: 'receipt', color: colors.warning },
+      ],
+    },
     title: 'Todo desde tu teléfono',
     text: 'Simula, solicita y paga tus cuotas sin papeleo ni filas en el banco.',
   },
   {
-    image: require('../../assets/images/hero-book.png'),
+    illustration: {
+      icon: 'shield-checkmark',
+      badges: [
+        { icon: 'lock-closed', color: colors.primary },
+        { icon: 'eye', color: colors.accent },
+        { icon: 'finger-print', color: colors.warning },
+      ],
+    },
     title: 'Claro y seguro',
     text: 'Ves tu cupo, tus cuotas y cada abono. Tus datos viajan cifrados.',
   },
@@ -49,8 +72,16 @@ export default function Welcome() {
       </View>
 
       <View style={[styles.heroWrap, { height: height * 0.46 }]}>
-        <View style={[styles.blob, i % 2 ? styles.blobLeft : styles.blobRight]} />
-        <Image source={slide.image} style={styles.hero} resizeMode="contain" />
+        {slide.image ? (
+          <>
+            <View style={[styles.blob, styles.blobRight]} />
+            <Image source={slide.image} style={styles.hero} resizeMode="contain" />
+          </>
+        ) : slide.illustration ? (
+          <View style={{ flex: 1, justifyContent: 'center' }}>
+            <Illustration icon={slide.illustration.icon} size={240} badges={slide.illustration.badges} />
+          </View>
+        ) : null}
       </View>
 
       <View style={{ paddingHorizontal: space.lg, alignItems: 'center' }}>
