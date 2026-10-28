@@ -195,7 +195,7 @@ export default function RequestCredit() {
         <View style={styles.overlay}>
           <View style={styles.overlayCard}>
             <Image
-              source={require('../../assets/images/hero-laptop.png')}
+              source={require('../../assets/images/hero-phone.png')}
               style={{ width: 130, height: 140 }}
               resizeMode="contain"
             />

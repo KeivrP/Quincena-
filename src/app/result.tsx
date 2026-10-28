@@ -60,7 +60,7 @@ export default function Result() {
           {p.message || c.text}
         </T>
       </View>
-      <Image source={require('../../assets/images/hero-success.png')} style={styles.hero} resizeMode="contain" />
+      <Image source={require('../../assets/images/hero-phone.png')} style={styles.hero} resizeMode="contain" />
       <View style={{ padding: space.lg, gap: space.sm }}>
         {p.id && key !== 'rejected' ? (
           <Button

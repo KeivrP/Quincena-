@@ -7,12 +7,12 @@ import { colors, space } from '../theme';
 
 const SLIDES = [
   {
-    image: require('../../assets/images/hero-laptop.png'),
+    image: require('../../assets/images/hero-phone.png'),
     title: 'Crédito al instante',
     text: 'Pide un adelanto sobre tu nómina y recíbelo en tu pago móvil en segundos.',
   },
   {
-    image: require('../../assets/images/hero-phone.png'),
+    image: require('../../assets/images/hero-phone-flip.png'),
     title: 'Todo desde tu teléfono',
     text: 'Simula, solicita y paga tus cuotas sin papeleo ni filas en el banco.',
   },
