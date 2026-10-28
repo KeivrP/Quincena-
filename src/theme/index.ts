@@ -1,10 +1,14 @@
-// Paleta tomada del Figma "Pure Edu" (naranja #FA7136) con un azul noche para el tono bancario.
+// Paleta financiera: azul marino (confianza) + verde esmeralda (dinero). Formas y tipografía del Figma "Pure Edu".
 export const colors = {
-  primary: '#FA7136',
-  primaryDark: '#DD5922',
-  primarySoft: '#FFE8DD',
-  navy: '#1B1D29',
-  navySoft: '#2A2D3E',
+  primary: '#0F3D85',
+  primaryDark: '#0A2C63',
+  primarySoft: '#E7EEFA',
+  onPrimaryMuted: '#C3D3EE',
+  accent: '#12B886',
+  accentDark: '#0C8F68',
+  accentSoft: '#E1F7EF',
+  navy: '#0A1F44',
+  navySoft: '#173A73',
   bg: '#F6F6F9',
   card: '#FFFFFF',
   text: '#1B1D29',

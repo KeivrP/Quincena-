@@ -43,12 +43,12 @@ export function CreditCard({ credit }: { credit: CreditSummary }) {
             width: 44,
             height: 44,
             borderRadius: 12,
-            backgroundColor: colors.primarySoft,
+            backgroundColor: colors.accentSoft,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Ionicons name="cash-outline" size={22} color={colors.primary} />
+          <Ionicons name="cash-outline" size={22} color={colors.accentDark} />
         </View>
         <View style={{ flex: 1 }}>
           <T variant="h3">{formatUsd(credit.amount)}</T>

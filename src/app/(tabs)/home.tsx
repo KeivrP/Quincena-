@@ -67,7 +67,7 @@ export default function Home() {
               </T>
             </View>
             <View style={{ flex: 1, marginLeft: space.sm }}>
-              <T variant="caption" color="#FFE3D6">
+              <T variant="caption" color={colors.onPrimaryMuted}>
                 {profile?.company_name ?? 'Bienvenido'}
               </T>
               <T variant="h3" color={colors.white}>
@@ -92,7 +92,7 @@ export default function Home() {
               {formatUsd(profile?.credit_available)}
             </T>
             <View style={{ marginTop: space.md }}>
-              <ProgressBar value={usedPct} track="rgba(255,255,255,0.15)" />
+              <ProgressBar value={usedPct} color={colors.accent} track="rgba(255,255,255,0.15)" />
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: space.sm }}>
               <T variant="caption" color="rgba(255,255,255,0.7)">
@@ -186,8 +186,8 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     borderRadius: 90,
-    backgroundColor: colors.primary,
-    opacity: 0.35,
+    backgroundColor: colors.accent,
+    opacity: 0.25,
     right: -60,
     top: -70,
   },

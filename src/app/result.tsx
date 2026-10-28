@@ -51,7 +51,7 @@ export default function Result() {
           {c.title}
         </T>
         {p.amount && key !== 'rejected' ? (
-          <T variant="amount" color={colors.primary} style={{ marginTop: space.sm }}>
+          <T variant="amount" color={colors.accentDark} style={{ marginTop: space.sm }}>
             {formatUsd(p.amount)}
           </T>
         ) : null}

@@ -42,7 +42,7 @@ export default function Login() {
               <T variant="h1" color={colors.white} style={{ marginTop: space.md }}>
                 Bienvenido
               </T>
-              <T color="#FFE3D6">Ingresa para ver tu cupo disponible</T>
+              <T color={colors.onPrimaryMuted}>Ingresa para ver tu cupo disponible</T>
             </View>
 
             <View style={styles.card}>

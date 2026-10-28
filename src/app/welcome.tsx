@@ -34,7 +34,12 @@ export default function Welcome() {
       <View style={styles.top}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
           <Logo size={34} />
-          <T variant="h3">XtraCash</T>
+          <T variant="h3">
+            Quincena
+            <T variant="h3" color={colors.accent}>
+              +
+            </T>
+          </T>
         </View>
         {!last ? (
           <T variant="label" color={colors.textMuted} onPress={() => router.push('/login')}>

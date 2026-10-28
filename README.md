@@ -1,7 +1,7 @@
-# XtraCash (nombre provisional)
+# Quincena+ (nombre provisional)
 
 App móvil del **trabajador** para el crédito de nómina DisGlobal. React Native + Expo (SDK 58) + Expo Router, TypeScript.
-Estilo y personajes 3D tomados del Figma *Pure Edu* (naranja `#FA7136`, Poppins), con un azul noche para el tono bancario.
+Formas, tipografía (Poppins) y personajes 3D tomados del Figma *Pure Edu*; paleta financiera azul marino `#0F3D85` + verde esmeralda `#12B886`.
 
 ## Arrancar
 

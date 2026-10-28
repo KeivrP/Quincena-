@@ -65,10 +65,10 @@ export default function Profile() {
             <T variant="h3" color={colors.white}>
               {profile?.full_name}
             </T>
-            <T variant="caption" color="#FFE3D6">
+            <T variant="caption" color={colors.onPrimaryMuted}>
               {profile?.email}
             </T>
-            <T variant="caption" color="#FFE3D6">
+            <T variant="caption" color={colors.onPrimaryMuted}>
               {profile?.cedula} · {profile?.company_name}
             </T>
           </View>
@@ -104,7 +104,7 @@ export default function Profile() {
           ))}
         </Card>
         <T variant="caption" color={colors.textMuted} style={{ textAlign: 'center', marginTop: space.lg }}>
-          XtraCash v0.1 · Crédito de nómina DisGlobal
+          Quincena+ v0.1 · Crédito de nómina DisGlobal
         </T>
       </Screen>
     </View>

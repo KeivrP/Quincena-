@@ -1,22 +1,22 @@
 {
   "expo": {
-    "name": "XtraCash",
-    "slug": "xtracash",
-    "scheme": "xtracash",
+    "name": "Quincena+",
+    "slug": "quincena-plus",
+    "scheme": "quincenaplus",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.disglobal.xtracash"
+      "bundleIdentifier": "com.disglobal.quincenaplus"
     },
     "android": {
-      "package": "com.disglobal.xtracash",
+      "package": "com.disglobal.quincenaplus",
       "allowBackup": false,
       "permissions": ["INTERNET"],
       "adaptiveIcon": {
-        "backgroundColor": "#FA7136",
+        "backgroundColor": "#0F3D85",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -37,7 +37,7 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 160,
           "resizeMode": "contain",
-          "backgroundColor": "#FA7136"
+          "backgroundColor": "#0F3D85"
         }
       ]
     ],

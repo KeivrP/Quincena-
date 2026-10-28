@@ -110,7 +110,7 @@ export function OrangeHeader({
         {right}
       </View>
       {subtitle ? (
-        <T color="#FFE3D6" style={{ marginTop: space.xs, marginLeft: 22 + space.md }}>
+        <T color={colors.onPrimaryMuted} style={{ marginTop: space.xs, marginLeft: 22 + space.md }}>
           {subtitle}
         </T>
       ) : null}
@@ -333,7 +333,7 @@ export function Logo({ size = 64, light }: { size?: number; light?: boolean }) {
           style={{ fontFamily: fonts.bold, fontSize: size * 0.55, lineHeight: size * 0.7 }}
           color={light ? colors.primary : colors.white}
         >
-          X
+          Q
         </T>
         <View
           style={{
@@ -343,7 +343,7 @@ export function Logo({ size = 64, light }: { size?: number; light?: boolean }) {
             width: size * 0.16,
             height: size * 0.16,
             borderRadius: size,
-            backgroundColor: colors.navy,
+            backgroundColor: colors.accent,
           }}
         />
       </View>
