@@ -5,29 +5,29 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { messageFor } from '../../api/errors';
 import { appApi } from '../../api/endpoints';
-import type { CreditDetail } from '../../api/types';
+import type { LoanDetail } from '../../api/types';
 import { statusPill } from '../../components/CreditCard';
 import { Banner, Button, Card, OrangeHeader, Row, Screen, T } from '../../components/ui';
-import { formatBs, formatUsd } from '../../lib/money';
+import { toBig, formatUsd } from '../../lib/money';
 import { formatCivilDate } from '../../lib/validators';
 import { colors, space } from '../../theme';
 
 const INST_STATUS: Record<string, [string, string]> = {
   paid: ['Pagada', colors.success],
-  pending: ['Pendiente', colors.textMuted],
+  scheduled: ['Pendiente', colors.textMuted],
   overdue: ['Vencida', colors.danger],
-  partial: ['Parcial', colors.warning],
+  cancelled: ['Cancelada', colors.textMuted],
 };
 
 export default function CreditDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [credit, setCredit] = useState<CreditDetail | null>(null);
+  const [credit, setCredit] = useState<LoanDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      setCredit(await appApi.credit(id));
+      setCredit(await appApi.loan(id));
     } catch (e) {
       setError(messageFor(e));
     }
@@ -37,12 +37,17 @@ export default function CreditDetailScreen() {
     load();
   }, [load]);
 
+  const outstanding = credit
+    ? credit.installments.reduce((acc, i) => acc.plus(toBig(i.outstanding_usd)), toBig('0')).toFixed(2)
+    : '0.00';
+
   const openReceipt = async () => {
     setOpening(true);
     try {
-      // URL prefirmada nueva en cada apertura; no se guarda.
-      const { pdf_url } = await appApi.creditReceipt(id);
-      await WebBrowser.openBrowserAsync(pdf_url);
+      // La URL prefirmada vence pronto: pedimos el detalle de nuevo para traer una fresca.
+      const fresh = await appApi.loan(id);
+      setCredit(fresh);
+      if (fresh.receipt_download_url) await WebBrowser.openBrowserAsync(fresh.receipt_download_url);
     } catch (e) {
       setError(messageFor(e));
     } finally {
@@ -52,7 +57,7 @@ export default function CreditDetailScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <OrangeHeader title={`Crédito ${id}`} />
+      <OrangeHeader title="Detalle del crédito" />
       <Screen edges={['bottom']}>
         {error ? <Banner tone="error" message={error} /> : null}
         {!credit && !error ? <ActivityIndicator color={colors.primary} style={{ marginTop: space.xl }} /> : null}
@@ -65,16 +70,15 @@ export default function CreditDetailScreen() {
                 </T>
                 {statusPill(credit.status)}
               </View>
-              <T variant="amount">{formatUsd(credit.outstanding)}</T>
+              <T variant="amount">{formatUsd(outstanding)}</T>
               <View style={{ height: 1, backgroundColor: colors.border, marginVertical: space.sm }} />
-              <Row label="Monto recibido" value={formatUsd(credit.amount)} />
-              {credit.amount_bs ? <Row label="En bolívares" value={formatBs(credit.amount_bs)} /> : null}
-              <Row label="Cuotas" value={`${credit.installments} × ${formatUsd(credit.installment_amount)}`} />
-              <Row label="Fecha" value={formatCivilDate(credit.created_at)} />
+              <Row label="Monto recibido" value={formatUsd(credit.principal_usd)} />
+              <Row label="Cuotas" value={`${credit.installments_count} · Total ${formatUsd(credit.total_payable_usd)}`} />
+              <Row label="Fecha" value={formatCivilDate(credit.requested_at)} />
             </Card>
 
             <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md }}>
-              {credit.receipt_available !== false ? (
+              {credit.status !== 'disbursement_failed' ? (
                 <Button
                   title="Comprobante"
                   icon="document-text-outline"
@@ -89,12 +93,7 @@ export default function CreditDetailScreen() {
                   title="Pagar cuota"
                   icon="arrow-up-circle-outline"
                   style={{ flex: 1 }}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/report-payment',
-                      params: { creditId: credit.id, amount: credit.installment_amount },
-                    })
-                  }
+                  onPress={() => router.push({ pathname: '/report-payment', params: { loanId: credit.id } })}
                 />
               ) : null}
             </View>
@@ -103,16 +102,16 @@ export default function CreditDetailScreen() {
               Cronograma de cuotas
             </T>
             <Card style={{ paddingVertical: space.sm }}>
-              {credit.schedule.map((s, k) => {
+              {credit.installments.map((s, k) => {
                 const [label, tint] = INST_STATUS[s.status] ?? [s.status, colors.textMuted];
                 return (
                   <View
-                    key={s.number}
+                    key={s.sequence_number}
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
                       paddingVertical: space.sm,
-                      borderBottomWidth: k === credit.schedule.length - 1 ? 0 : 1,
+                      borderBottomWidth: k === credit.installments.length - 1 ? 0 : 1,
                       borderBottomColor: colors.border,
                     }}
                   >
@@ -122,13 +121,13 @@ export default function CreditDetailScreen() {
                       color={tint}
                     />
                     <View style={{ flex: 1, marginLeft: space.sm }}>
-                      <T variant="label">Cuota {s.number}</T>
+                      <T variant="label">Cuota {s.sequence_number}</T>
                       <T variant="caption" color={colors.textMuted}>
                         Vence {formatCivilDate(s.due_date)}
                       </T>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
-                      <T variant="label">{formatUsd(s.amount)}</T>
+                      <T variant="label">{formatUsd(s.total_amount_usd)}</T>
                       <T variant="caption" color={tint}>
                         {label}
                       </T>

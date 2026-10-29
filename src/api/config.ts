@@ -1,6 +1,6 @@
 // La URL base sale de variables de entorno (EXPO_PUBLIC_*), nunca hardcodeada en pantallas.
 export const API_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://developer.dis-global.com/creditos'
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://developer.dis-global.com/creditos/api/v1'
 ).replace(/\/+$/, '');
 
 export const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK === '1';

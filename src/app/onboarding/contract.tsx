@@ -7,7 +7,7 @@ import { ActivityIndicator, Pressable, View } from 'react-native';
 import { USE_MOCK } from '../../api/config';
 import { messageFor } from '../../api/errors';
 import { appApi } from '../../api/endpoints';
-import type { Contract } from '../../api/types';
+import type { CreditAgreement } from '../../api/types';
 import { useAuth } from '../../auth/AuthProvider';
 import { Steps } from '../../components/Steps';
 import { Banner, Button, Card, OrangeHeader, Screen, T } from '../../components/ui';
@@ -27,7 +27,7 @@ async function hashPdf(url: string): Promise<string> {
 
 export default function ContractScreen() {
   const { refreshProfile } = useAuth();
-  const [contract, setContract] = useState<Contract | null>(null);
+  const [contract, setContract] = useState<CreditAgreement | null>(null);
   const [accepted, setAccepted] = useState(false);
   const [opened, setOpened] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -36,7 +36,7 @@ export default function ContractScreen() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const c = await appApi.contract();
+      const c = await appApi.creditAgreement();
       setContract(c);
       return c;
     } catch (e) {
@@ -53,7 +53,7 @@ export default function ContractScreen() {
     // Pedimos una URL fresca cada vez: las prefirmadas vencen en ~1 h.
     const c = (await load()) ?? contract;
     if (!c) return;
-    await WebBrowser.openBrowserAsync(c.pdf_url);
+    await WebBrowser.openBrowserAsync(c.download_url);
     setOpened(true);
   };
 
@@ -63,11 +63,11 @@ export default function ContractScreen() {
     try {
       const fresh = (await load()) ?? contract;
       if (!fresh) return;
-      const hash = await hashPdf(fresh.pdf_url);
-      if (fresh.document_hash && fresh.document_hash.toLowerCase() !== hash) {
+      const hash = await hashPdf(fresh.download_url);
+      if (fresh.pdf_sha256 && fresh.pdf_sha256.toLowerCase() !== hash) {
         throw new Error('El documento cambió. Ábrelo de nuevo antes de firmar.');
       }
-      await appApi.signContract(hash);
+      await appApi.signCreditAgreement(hash);
       await refreshProfile();
       router.replace('/');
     } catch (e) {

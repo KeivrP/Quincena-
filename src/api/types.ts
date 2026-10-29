@@ -1,8 +1,8 @@
 import type { Money } from '../lib/money';
 
-// Formas basadas en la guía del desarrollador. Antes de producción, contrástalas con
-// https://developer.dis-global.com/creditos/openapi.json (o genera los tipos con
-// `npx openapi-typescript <url> -o src/api/schema.d.ts`) y ajusta solo este archivo.
+// Formas contrastadas contra el backend real (src/disglobal/modules/*/schemas.py
+// en el repo Displata), no contra la guía. Si algo cambia en el servidor, se
+// ajusta solo este archivo y `endpoints.ts`.
 
 export interface Problem {
   type?: string;
@@ -16,110 +16,160 @@ export interface Problem {
 
 export interface TokenPair {
   access_token: string;
-  refresh_token: string;
-  token_type?: string;
-  expires_in?: number;
+  refresh_token: string | null;
+  token_type: string;
 }
 
-export interface LoginResponse extends TokenPair {
-  must_change_password?: boolean;
+export interface CurrentUser {
+  id: string;
+  tenant_id: string | null;
+  email: string;
+  full_name: string;
+  role: string;
+  mfa_enabled: boolean;
+  must_change_password: boolean;
+}
+
+export type LoanStatus = 'disbursing' | 'active' | 'cancelled' | 'paid_off' | 'disbursement_failed';
+export type LoanInstallmentStatus = 'scheduled' | 'cancelled' | 'overdue' | 'paid';
+
+export interface PaymentDestination {
+  bank_code: string;
+  phone: string;
+  national_id: string;
 }
 
 export interface Profile {
   full_name: string;
-  email: string;
-  cedula?: string;
-  company_name?: string;
-  must_change_password?: boolean;
-  credit_limit: Money;
-  credit_used: Money;
-  credit_available: Money;
-  contract_status: 'pending' | 'signed';
-  payout_status: 'pending' | 'registered';
-  payout_account?: { bank_code: string; bank_name?: string; phone: string; cedula: string } | null;
-  // Cuenta de la empresa a la que el trabajador paga sus abonos (pago móvil).
-  company_payment_account?: { bank_code: string; bank_name?: string; phone: string; rif: string } | null;
-  active_credits?: CreditSummary[];
+  national_id: string;
+  email: string | null;
+  company_legal_name: string;
+  employment_status: string;
+  payment_frequency: 'weekly' | 'biweekly' | 'monthly';
+  salary_per_period_usd: Money;
+  installments_count: number;
+  credit_limit_usd: Money;
+  credit_used_usd: Money;
+  credit_available_usd: Money;
+  credit_agreement_signed: boolean;
+  payout_registered: boolean;
+  payment_destination: PaymentDestination | null;
 }
 
-export interface Contract {
-  status: 'pending' | 'signed';
-  pdf_url: string; // URL prefirmada, corta vida, GET sin Authorization
-  document_hash?: string; // sha256 hex del PDF, si el servidor lo expone
-  signed_at?: string | null;
+export interface CreditAgreement {
+  signed: boolean;
+  pdf_sha256: string;
+  download_url: string;
+  accepted_at: string | null;
 }
 
 export interface Bank {
-  code: string; // 4 dígitos
+  code: string;
   name: string;
 }
 
-export interface QuoteRequest {
-  amount: Money;
-  installments: number;
+export interface PayoutAccount {
+  registered: boolean;
+  bank_code: string | null;
+  phone: string | null;
+  national_id: string | null;
+  registered_at: string | null;
 }
 
-export interface Quote {
-  amount: Money;
-  installments: number;
-  installment_amount: Money;
-  total: Money;
-  amount_bs?: Money;
-  exchange_rate?: Money;
-  first_due_date?: string;
+export interface LoanQuoteInstallment {
+  sequence_number: number;
+  due_date: string;
+  period_key: string;
+  principal_component_usd: Money;
+  interest_or_fee_component_usd: Money;
+  total_amount_usd: Money;
+  total_amount_bs: Money;
+}
+
+export interface LoanQuote {
+  principal_usd: Money;
+  installments_count: number;
+  total_payable_usd: Money;
+  total_charge_usd: Money;
+  fx_rate_date: string;
+  usd_to_bs_rate: Money;
+  total_payable_bs: Money;
+  installments: LoanQuoteInstallment[];
   would_be_rejected: boolean;
   rejection_reason?: string | null;
-  installment_options?: number[];
+  fx_rate_source?: string | null;
+  fx_rate_source_date?: string | null;
+  fx_rate_is_stale: boolean;
+  fx_rate_age_days: number;
+  fx_rate_confirmation_required: boolean;
+  fx_rate_max_staleness_days?: number | null;
 }
 
-export type CreditOutcome = 'disbursed' | 'rejected' | 'in_review';
-
-export interface CreditRequestResult {
-  id?: string;
-  status: CreditOutcome | string;
-  amount?: Money;
-  amount_bs?: Money;
-  message?: string;
+export interface LoanInstallment {
+  sequence_number: number;
+  due_date: string;
+  period_key: string;
+  principal_component_usd: Money;
+  interest_or_fee_component_usd: Money;
+  total_amount_usd: Money;
+  status: LoanInstallmentStatus;
+  paid_principal_usd: Money;
+  paid_fee_interest_usd: Money;
+  mora_accrued_usd: Money;
+  mora_paid_usd: Money;
+  outstanding_usd: Money;
+  overdue_since: string | null;
+  paid_at: string | null;
 }
 
-export interface CreditSummary {
+export interface Loan {
   id: string;
-  amount: Money;
-  outstanding: Money;
-  status: string;
-  installments: number;
-  installment_amount: Money;
-  next_due_date?: string | null;
+  employee_id: string;
+  credit_product_id: string;
+  status: LoanStatus;
+  principal_usd: Money;
+  installments_count: number;
+  total_payable_usd: Money;
+  charge_model_snapshot: string;
+  rate_percent_snapshot: Money;
+  payment_frequency_snapshot: 'weekly' | 'biweekly' | 'monthly';
+  fx_rate_at_disbursement: Money | null;
+  fx_rate_date: string | null;
+  requested_at: string;
+  disbursed_at: string | null;
+  paid_off_at: string | null;
   created_at: string;
 }
 
-export interface Installment {
-  number: number;
-  due_date: string; // fecha civil
-  amount: Money;
-  paid_amount?: Money;
-  status: 'pending' | 'paid' | 'overdue' | 'partial' | string;
+export interface LoanDetail extends Loan {
+  installments: LoanInstallment[];
+  receipt_download_url: string | null;
 }
 
-export interface CreditDetail extends CreditSummary {
-  amount_bs?: Money;
-  exchange_rate?: Money;
-  schedule: Installment[];
-  receipt_available?: boolean;
+export interface LoanApplicationResult {
+  loan: Loan;
+  receipt_download_url: string;
+  receipt_pdf_sha256: string;
 }
 
-export interface PaymentReportRequest {
-  credit_id: string;
-  amount: Money;
-  reference: string;
-  bank_code?: string;
-  paid_on?: string;
-}
+/** Los 3 desenlaces posibles de `POST /app/loans`, unificados para la UI. */
+export type LoanRequestOutcome =
+  | { status: 'disbursed'; loan: Loan; receipt_download_url: string }
+  | { status: 'rejected'; message: string }
+  | { status: 'in_review'; message: string };
 
-export interface PaymentReport {
+export interface PaymentTransaction {
   id: string;
-  status: 'validated' | 'pending' | 'rejected' | string;
-  amount: Money;
+  loan_id: string | null;
+  amount_usd: Money;
+  provider_reference: string;
+  confirmed_at: string;
+}
+
+export interface DirectPaymentRequest {
+  amount_usd: Money;
   reference: string;
-  message?: string;
+  payment_date: string;
+  payer_bank_code: string;
+  payer_account: string;
 }

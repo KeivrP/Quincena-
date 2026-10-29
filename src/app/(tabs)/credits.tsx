@@ -3,20 +3,20 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, View } from 'react-native';
 import { messageFor } from '../../api/errors';
 import { appApi } from '../../api/endpoints';
-import type { CreditSummary } from '../../api/types';
+import type { Loan } from '../../api/types';
 import { CreditCard } from '../../components/CreditCard';
 import { Banner, EmptyState, OrangeHeader } from '../../components/ui';
 import { colors, space } from '../../theme';
 
 export default function Credits() {
-  const [items, setItems] = useState<CreditSummary[] | null>(null);
+  const [items, setItems] = useState<Loan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
       setError(null);
-      setItems(await appApi.credits());
+      setItems(await appApi.loans());
     } catch (e) {
       setError(messageFor(e));
     }

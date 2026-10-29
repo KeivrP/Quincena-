@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { messageFor } from '../../api/errors';
 import { appApi } from '../../api/endpoints';
@@ -14,25 +14,35 @@ import { colors, space } from '../../theme';
 /** También se usa desde Perfil para actualizar los datos de cobro (?edit=1). */
 export default function Payout() {
   const { profile, refreshProfile } = useAuth();
-  const editing = profile?.payout_status === 'registered';
+  const editing = !!profile?.payout_registered;
   const [banks, setBanks] = useState<Bank[]>([]);
   const [bank, setBank] = useState<Bank | null>(null);
-  const [phone, setPhone] = useState(profile?.payout_account?.phone ?? '');
-  const [cedula, setCedula] = useState(profile?.payout_account?.cedula ?? profile?.cedula ?? '');
+  const [phone, setPhone] = useState('');
+  const [cedula, setCedula] = useState(profile?.national_id ?? '');
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const loadCurrent = useCallback(async (list: Bank[]) => {
+    try {
+      const current = await appApi.payoutAccount();
+      if (current.phone) setPhone(current.phone);
+      if (current.national_id) setCedula(current.national_id);
+      if (current.bank_code) setBank(list.find((x) => x.code === current.bank_code) ?? null);
+    } catch {
+      // Sin cuenta registrada aún: formulario vacío, no es un error.
+    }
+  }, []);
+
   useEffect(() => {
     appApi
       .banks()
-      .then((b) => {
+      .then(async (b) => {
         setBanks(b);
-        const current = profile?.payout_account?.bank_code;
-        if (current) setBank(b.find((x) => x.code === current) ?? null);
+        await loadCurrent(b);
       })
       .catch((e) => setError(messageFor(e)));
-  }, [profile?.payout_account?.bank_code]);
+  }, [loadCurrent]);
 
   const submit = async () => {
     const errs: Record<string, string | null> = {
@@ -40,7 +50,7 @@ export default function Payout() {
       phone: isValidPhone(phone) ? null : 'Debe ser un móvil venezolano (0412, 0414, 0416, 0424, 0426).',
       cedula: isValidCedula(cedula) ? null : 'Formato: V12345678.',
     };
-    if (!errs.cedula && profile?.cedula && normalizeCedula(cedula) !== normalizeCedula(profile.cedula)) {
+    if (!errs.cedula && profile?.national_id && normalizeCedula(cedula) !== normalizeCedula(profile.national_id)) {
       errs.cedula = 'Debe ser tu propia cédula.';
     }
     setErrors(errs);
@@ -51,7 +61,7 @@ export default function Payout() {
       await appApi.savePayoutAccount({
         bank_code: bank!.code,
         phone: normalizePhone(phone),
-        cedula: normalizeCedula(cedula),
+        national_id: normalizeCedula(cedula),
       });
       await refreshProfile();
       router.replace(editing ? '/profile' : '/');
