@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Quincena+ · video</title>
+<style>
+@font-face{font-family:P;src:url(fonts/p400.ttf);font-weight:400}
+@font-face{font-family:P;src:url(fonts/p500.ttf);font-weight:500}
+@font-face{font-family:P;src:url(fonts/p600.ttf);font-weight:600}
+@font-face{font-family:P;src:url(fonts/p700.ttf);font-weight:700}
+@font-face{font-family:P;src:url(fonts/p800.ttf);font-weight:800}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0A1F44;font-family:P,sans-serif;color:#fff}
+#stage{position:relative;overflow:hidden;background:linear-gradient(160deg,#0B2451 0%,#0A1F44 55%,#071634 100%)}
+.blob{position:absolute;border-radius:50%;opacity:.5;will-change:auto}
+.layer{position:absolute;inset:0;visibility:hidden}
+.w{display:inline-block;white-space:pre}
+/* hook */
+#hook{display:flex;align-items:center;justify-content:center;text-align:center}
+#hook .t{font-weight:800;line-height:1.05;letter-spacing:-0.02em}
+.em{color:#3DDC9F}
+/* logo */
+#logo{display:flex;align-items:center;justify-content:center;flex-direction:column}
+.badge{position:absolute;background:#fff;border-radius:26%;display:flex;align-items:center;justify-content:center;box-shadow:0 30px 80px rgba(0,0,0,.35)}
+.badge span{font-weight:800;color:#0F3D85;line-height:1}
+.badge i{font-style:normal;font-weight:800;color:#12B886;line-height:1}
+.wordmark{position:absolute;font-weight:700;letter-spacing:-0.02em;white-space:nowrap}
+.wordmark i{font-style:normal;color:#3DDC9F}
+.tag{position:absolute;font-weight:500;opacity:.85;white-space:nowrap}
+/* captions */
+.cap{position:absolute}
+.cap .h{font-weight:700;line-height:1.1;letter-spacing:-0.02em}
+.cap .s{font-weight:400;opacity:.78;margin-top:.5em;line-height:1.35}
+/* phone */
+#phone{position:absolute;background:#0a1226;border-radius:60px;padding:14px;box-shadow:0 60px 120px rgba(0,0,0,.5),0 0 0 2px rgba(255,255,255,.08) inset;transform-origin:50% 50%}
+#screen{position:relative;width:100%;height:100%;border-radius:48px;overflow:hidden;background:#F6F6F9}
+#screen img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover}
+#notch{position:absolute;left:50%;top:18px;width:26%;height:30px;transform:translateX(-50%);background:#0a1226;border-radius:20px;z-index:5}
+#cursor{position:absolute;width:52px;height:52px;border-radius:50%;background:rgba(61,220,159,.9);box-shadow:0 0 0 6px rgba(255,255,255,.35),0 10px 30px rgba(0,0,0,.35);z-index:6;margin-left:-26px;margin-top:-26px}
+#tapdim{position:absolute;left:4%;width:92%;background:#000;border-radius:16px;opacity:0;z-index:4}
+/* particles */
+.pt{position:absolute;border-radius:50%}
+/* cards */
+.card{position:absolute;border-radius:40px;overflow:hidden;box-shadow:0 40px 90px rgba(0,0,0,.45);background:#F6F6F9;transform-origin:50% 100%}
+.card img{width:100%;height:100%;object-fit:cover;display:block}
+/* features */
+.feat{position:absolute;display:flex;align-items:center;gap:22px;background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.14);border-radius:28px;backdrop-filter:blur(6px);font-weight:600;white-space:nowrap}
+.feat .ic{display:flex;align-items:center;justify-content:center;border-radius:18px;background:#12B886;flex:none}
+.feat svg{stroke:#fff;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.pill{position:absolute;background:#12B886;color:#fff;font-weight:700;border-radius:999px;white-space:nowrap;box-shadow:0 20px 50px rgba(18,184,134,.35)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="blob" id="b1" style="background:radial-gradient(circle,#12B886 0%,rgba(18,184,134,.5) 35%,rgba(18,184,134,0) 70%)"></div>
+  <div class="blob" id="b2" style="background:radial-gradient(circle,#2E6BD6 0%,rgba(46,107,214,.5) 35%,rgba(46,107,214,0) 70%)"></div>
+  <div class="blob" id="b3" style="background:radial-gradient(circle,#1A55B0 0%,rgba(26,85,176,.5) 35%,rgba(26,85,176,0) 70%)"></div>
+
+  <div class="layer" id="hook"><div class="t"></div></div>
+
+  <div class="layer" id="logo">
+    <div class="badge" id="badge"><span>Q</span><i>+</i></div>
+    <div class="wordmark" id="wm">Quincena<i>+</i></div>
+    <div class="tag" id="tagline">Crédito de nómina, desde tu teléfono.</div>
+  </div>
+
+  <div class="layer" id="product">
+    <div class="cap" id="cap"><div class="h"></div><div class="s"></div></div>
+    <div id="phone"><div id="screen"><div id="notch"></div><img id="imgA"><img id="imgB"><div id="tapdim"></div><div id="cursor"></div></div></div>
+    <div class="pill" id="pill">$600,00 disponibles</div>
+    <div id="parts"></div>
+  </div>
+
+  <div class="layer" id="deck">
+    <div class="cap" id="cap2"><div class="h"></div><div class="s"></div></div>
+    <div class="card" id="c1"><img src="caps/15-detalle-credito.png"></div>
+    <div class="card" id="c2"><img src="caps/17-abono-validado.png"></div>
+    <div class="card" id="c3"><img src="caps/19-mis-creditos.png"></div>
+  </div>
+
+  <div class="layer" id="feats">
+    <div class="cap" id="cap3"><div class="h"></div><div class="s"></div></div>
+    <div id="featwrap"></div>
+  </div>
+
+  <div class="layer" id="outro">
+    <div class="badge" id="badge2"><span>Q</span><i>+</i></div>
+    <div class="wordmark" id="wm2">Quincena<i>+</i></div>
+    <div class="tag" id="tag2">Tu quincena, a tu ritmo.</div>
+    <div class="tag" id="tag3" style="font-weight:400;opacity:.55">Crédito de nómina · Simula, solicita y paga desde la app</div>
+  </div>
+</div>
+
+<script>
+// ---------- deterministic timeline ----------
+const Q = new URLSearchParams(location.search);
+const FMT = Q.get('fmt') || 'v';           // 'v' 1080x1920 | 'h' 1920x1080
+const W = FMT === 'v' ? 1080 : 1920, H = FMT === 'v' ? 1920 : 1080;
+const stage = document.getElementById('stage');
+stage.style.width = W + 'px'; stage.style.height = H + 'px';
+
+const clamp = (x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const seg = (t,a,d)=>clamp((t-a)/d);
+const outExpo = p=>p>=1?1:1-Math.pow(2,-10*p);
+const outQuint = p=>1-Math.pow(1-p,5);
+const inQuad = p=>p*p;
+const inOutCubic = p=>p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
+// damped spring, tau in seconds since start. zeta: .9 dry, .72 standard, .6 playful
+function spring(tau, zeta=0.72, omega=14){
+  if(tau<=0) return 0;
+  const wd = omega*Math.sqrt(1-zeta*zeta);
+  return 1 - Math.exp(-zeta*omega*tau)*(Math.cos(wd*tau)+(zeta*omega/wd)*Math.sin(wd*tau));
+}
+const lerp=(a,b,p)=>a+(b-a)*p;
+function mulberry(seed){return function(){let t=seed+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
+
+// layout -------------------------------------------------
+const V = FMT==='v';
+const L = V ? {
+  hookSize:118, hookW:900,
+  badge:280, wmSize:120, tagSize:40,
+  capX:90, capY:250, capW:900, capH:70, capS:36,
+  phoneW:600, phoneX:240, phoneY:560,
+  cardW:350, cardY:700, cardXs:[60,365,670],
+  featSize:38, featW:760, featX:160, featY0:640, featGap:150, featCols:1,
+  outBadge:260, outWm:112, outTag:40, outTag3:28,
+} : {
+  hookSize:120, hookW:1400,
+  badge:260, wmSize:112, tagSize:36,
+  capX:140, capY:330, capW:820, capH:76, capS:34,
+  phoneW:400, phoneX:1260, phoneY:120,
+  cardW:280, cardY:260, cardXs:[1070,1330,1590],
+  featSize:36, featW:700, featX:1080, featY0:270, featGap:130, featCols:1,
+  outBadge:240, outWm:104, outTag:36, outTag3:26,
+};
+const phoneH = Math.round(L.phoneW*1688/780);
+
+// ---------- static setup ----------
+const $ = id=>document.getElementById(id);
+function words(el, text, cls){
+  el.innerHTML = '';
+  text.split(' ').forEach((w,i)=>{const s=document.createElement('span');s.className='w';s.innerHTML=w+(i<text.split(' ').length-1?' ':'');el.appendChild(s)});
+  return [...el.children];
+}
+$('hook').querySelector('.t').style.fontSize=L.hookSize+'px';
+$('hook').querySelector('.t').style.maxWidth=L.hookW+'px';
+const hookWords = words($('hook').querySelector('.t'), 'Tu quincena, cuando la necesitas.');
+hookWords[1].classList.add('em');
+
+for(const b of ['badge','badge2']){const e=$(b);const s=b==='badge'?L.badge:L.outBadge;e.style.width=e.style.height=s+'px';e.querySelector('span').style.fontSize=s*.62+'px';e.querySelector('i').style.fontSize=s*.34+'px';e.querySelector('i').style.marginTop=-s*.22+'px';}
+$('wm').style.fontSize=L.wmSize+'px'; $('wm2').style.fontSize=L.outWm+'px';
+$('tagline').style.fontSize=L.tagSize+'px'; $('tag2').style.fontSize=L.outTag+'px'; $('tag3').style.fontSize=L.outTag3+'px';
+
+for(const c of ['cap','cap2','cap3']){const e=$(c);e.style.left=L.capX+'px';e.style.top=L.capY+'px';e.style.width=L.capW+'px';e.querySelector('.h').style.fontSize=L.capH+'px';e.querySelector('.s').style.fontSize=L.capS+'px';}
+if(!V){ $('cap2').style.top='330px'; $('cap3').style.top='330px'; }
+
+const phone=$('phone'); phone.style.width=L.phoneW+28+'px'; phone.style.height=phoneH+28+'px'; phone.style.left=L.phoneX-14+'px'; phone.style.top=L.phoneY-14+'px';
+$('tapdim').style.top=(1376/1688*100)+'%'; $('tapdim').style.height=(103/1688*100)+'%';
+$('pill').style.fontSize=(V?40:32)+'px'; $('pill').style.padding=(V?'20px 36px':'16px 28px');
+
+const cards=['c1','c2','c3'].map($); cards.forEach((c,i)=>{c.style.width=L.cardW+'px';c.style.height=Math.round(L.cardW*1688/780)+'px';c.style.left=L.cardXs[i]+'px';c.style.top=L.cardY+'px'});
+
+const FEATS=[
+ ['Sin filas en el banco','<svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-5h6v5"/></svg>'],
+ ['Sin papeleo','<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13l2 2 4-4"/></svg>'],
+ ['Se descuenta de tu nómina','<svg viewBox="0 0 24 24"><path d="M3 12h18M3 6h18M3 18h12"/><circle cx="19" cy="18" r="2.5"/></svg>'],
+ ['Datos cifrados de punta a punta','<svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'],
+];
+const featEls = FEATS.map(([txt,svg],i)=>{const d=document.createElement('div');d.className='feat';d.innerHTML=`<div class="ic">${svg}</div><span>${txt}</span>`;d.style.fontSize=L.featSize+'px';d.style.padding=(V?'26px 34px':'20px 28px');d.style.width=L.featW+'px';d.style.left=L.featX+'px';d.style.top=(L.featY0+i*L.featGap)+'px';const ic=d.querySelector('.ic');ic.style.width=ic.style.height=(V?84:70)+'px';d.querySelector('svg').style.width=d.querySelector('svg').style.height=(V?44:36)+'px';$('featwrap').appendChild(d);return d});
+
+// particles
+const rnd=mulberry(7); const parts=[];
+for(let i=0;i<70;i++){const e=document.createElement('div');e.className='pt';const s=8+rnd()*18;e.style.width=e.style.height=s+'px';e.style.background=['#3DDC9F','#12B886','#ffffff','#7FB0FF','#FFD166'][i%5];const a=rnd()*Math.PI*2,v=(380+rnd()*520);parts.push({e,vx:Math.cos(a)*v,vy:Math.sin(a)*v-300,r:rnd(),d:.9+rnd()*.8});$('parts').appendChild(e)}
+
+// ---------- scenes (seconds, 120 BPM = beat 0.5s) ----------
+const T = { hook:0, logo:2.5, prod:5.5, sim:9.5, sent:13.5, deck:17.5, feats:21.5, outro:25.5, end:29.5 };
+const SCREENS=[ // [start, file]
+  [T.prod,'11-inicio-sin-creditos.png'],
+  [T.sim,'12-simular-credito.png'],
+  [12.4,'13-enviando-dinero.png'],
+  [T.sent,'14-dinero-enviado.png'],
+];
+const imgA=$('imgA'), imgB=$('imgB');
+function show(el,on){el.style.visibility=on?'visible':'hidden'}
+function wordsIn(els, t, start, stagger=.07, dur=.55, dy=50){
+  els.forEach((w,i)=>{const p=outQuint(seg(t,start+i*stagger,dur));w.style.opacity=p;w.style.transform=`translateY(${(1-p)*dy}px)`});
+}
+function capSet(id,h,s){const e=$(id);if(e.dataset.h!==h){e.dataset.h=h;words(e.querySelector('.h'),h);e.querySelector('.s').textContent=s}}
+function capAnim(id,t,inAt,outAt){
+  const e=$(id);const ws=[...e.querySelector('.h').children];wordsIn(ws,t,inAt,.06,.6,44);
+  const s=e.querySelector('.s');const ps=outQuint(seg(t,inAt+.35,.6));s.style.opacity=.78*ps;s.style.transform=`translateY(${(1-ps)*30}px)`;
+  const po=outExpo(seg(t,outAt,.35));e.style.opacity=1-po;e.style.transform=`translateY(${-40*po}px)`;
+}
+
+function seek(t){
+  // background blobs drift
+  const bs=[[ $('b1'), 1100, .12, .07, .25,.15],[ $('b2'), 1400, .09, .05, .7,.75],[ $('b3'), 1300, .07, .1, .5,.45]];
+  bs.forEach(([e,s,fx,fy,cx,cy])=>{e.style.width=e.style.height=s+'px';e.style.left=(cx*W-s/2+Math.sin(t*fx*6.28)*120)+'px';e.style.top=(cy*H-s/2+Math.cos(t*fy*6.28)*100)+'px'});
+
+  // ---- hook ----
+  const hookOn = t<T.logo;
+  show($('hook'),hookOn);
+  if(hookOn){wordsIn(hookWords,t,.15,.11,.7,70);const po=inQuad(seg(t,T.logo-.4,.35));$('hook').style.opacity=1-po;$('hook').style.transform=`translateY(${-80*po}px) scale(${1+.05*po})`;}
+
+  // ---- logo ----
+  const logoOn = t>=T.logo-.1 && t<T.outro-.1;
+  show($('logo'),logoOn);
+  if(logoOn){
+    const b=$('badge'),wm=$('wm'),tg=$('tagline');
+    const p=spring(t-T.logo,.62,12);              // playful pop
+    const cx=W/2, cy=V?H*.42:H*.42;
+    // wordmark slides out to the right of badge
+    const pw=outExpo(seg(t,T.logo+.45,.8));
+    const wmW = wm.offsetWidth, gap=V?0:40;
+    let bx, wmx;
+    if(V){ bx=cx-L.badge/2; wmx=cx-wmW/2; }
+    else { const total=L.badge+gap+wmW; bx=cx-total/2; wmx=bx+L.badge+gap; }
+    const bY=V? cy-L.badge/2-110 : cy-L.badge/2;
+    // exit: shrink to brand mark top
+    const pe=inOutCubic(seg(t,T.prod-.35,.75));
+    const miniS=(V?80:70)/L.badge;
+    const tx = V? (W/2-L.badge/2) : (140-L.badge/2), ty = V? (130-L.badge/2) : (115-L.badge/2);
+    const bxF=lerp(bx,tx,pe), byF=lerp(bY,ty,pe), sF=lerp(1,miniS,pe);
+    b.style.left=bxF+'px';b.style.top=byF+'px';
+    const pbo=inQuad(seg(t,T.outro-.5,.35));b.style.transform=`scale(${Math.max(0.001,p*sF*(1-pbo))}) rotate(${(1-p)*-25}deg)`;b.style.opacity=clamp(p*3)*(1-pbo);
+    const wmY = V? bY+L.badge+40 : cy-L.wmSize*.62;
+    wm.style.left=wmx+'px';wm.style.top=wmY+'px';
+    wm.style.clipPath=`inset(0 ${(1-pw)*100}% 0 0)`;wm.style.transform=`translateX(${(1-pw)*-60}px)`;wm.style.opacity=(1-pe);
+    const pt=outQuint(seg(t,T.logo+1.1,.6));
+    tg.style.left=(cx-tg.offsetWidth/2)+'px';tg.style.top=(wmY+L.wmSize*1.3)+'px';tg.style.opacity=.85*pt*(1-pe);tg.style.transform=`translateY(${(1-pt)*30}px)`;
+  }
+
+  // ---- product (phone) ----
+  const prodOn = t>=T.prod-.2 && t<T.deck+.5;
+  show($('product'),prodOn);
+  if(!prodOn){parts.forEach(pt=>show(pt.e,false));show($('pill'),false);show($('cursor'),false);show($('tapdim'),false);}
+  if(prodOn){
+    // phone enter (standard spring) and exit at deck
+    const pin=spring(t-T.prod,.74,11);
+    const pout=inQuad(seg(t,T.deck-.45,.45));
+    let ty=(1-pin)*(V?900:700)+pout*(V?1100:900), rot=(1-pin)*(V?6:-6);
+    // camera: gentle push during sim scene
+    let sc=1;
+    if(t>T.prod+.8 && t<T.sim) sc=1+.04*outQuint(seg(t,T.prod+.8,3));
+    if(t>=T.sim) sc=1+.04*(1-outQuint(seg(t,T.sim,.8)));
+    if(t>=T.sent) sc=1+.05*spring(t-T.sent,.6,10);
+    phone.style.transform=`translateY(${ty}px) rotate(${rot}deg) scale(${sc})`;
+    phone.style.opacity=1;
+    // screens
+    let cur=0;for(let i=0;i<SCREENS.length;i++) if(t>=SCREENS[i][0]) cur=i;
+    const prev=Math.max(0,cur-1);const p=cur===0?1:outExpo(seg(t,SCREENS[cur][0],.65));
+    const a='caps/'+SCREENS[prev][1], bsrc='caps/'+SCREENS[cur][1];
+    if(imgA.getAttribute('src')!==a) imgA.src=a; if(imgB.getAttribute('src')!==bsrc) imgB.src=bsrc;
+    imgA.style.transform=`translateX(${-30*p}%)`;imgA.style.filter=`brightness(${1-.4*p})`;
+    imgB.style.transform=`translateX(${(1-p)*100}%)`;imgB.style.opacity=cur===0?1:1;
+    // captions
+    let cap=['','']; let capIn=T.prod, capOut=T.sim-.4;
+    if(t<T.sim){cap=['Tu cupo, siempre a la vista.','Lo que puedes pedir hoy, sin llamar a nadie.'];}
+    else if(t<T.sent){cap=['Elige cuánto y en cuántas cuotas.','La simulación te muestra todo antes de pedir.'];capIn=T.sim;capOut=T.sent-.4;}
+    else {cap=['Directo a tu pago móvil.','En segundos, sin ir al banco.'];capIn=T.sent;capOut=T.deck-.45;}
+    capSet('cap',cap[0],cap[1]); capAnim('cap',t,capIn+.15,capOut);
+    // pill callout near cupo (scene 1)
+    const pill=$('pill');
+    const pp=spring(t-(T.prod+1.3),.6,12)*(1-outExpo(seg(t,T.sim-.5,.3)));
+    const px = V? L.phoneX+L.phoneW-120 : L.phoneX-260, py = V? L.phoneY+phoneH*.07 : L.phoneY+phoneH*.11;
+    pill.style.left=px+'px';pill.style.top=py+'px';pill.style.transform=`translate(-50%,-50%) scale(${Math.max(.001,pp)}) rotate(${V?-6:-4}deg)`;pill.style.opacity=clamp(pp*2);
+    show(pill, t>T.prod+1.2 && t<T.sim);
+    // cursor + tap (scene 2)
+    const cur_=$('cursor');
+    const cOn = t>T.sim+.9 && t<12.5; show(cur_,cOn); show($('tapdim'), cOn);
+    if(cOn){
+      const pm=inOutCubic(seg(t,T.sim+1.0,.9));
+      const x0=L.phoneW*.78, y0=phoneH*.62, x1=L.phoneW*.5, y1=phoneH*(1427/1688);
+      const x=lerp(x0,x1,pm), y=lerp(y0,y1,pm)-Math.sin(pm*Math.PI)*60;
+      const tapT=T.sim+2.1; const tp=t>=tapT?1-spring(t-tapT,.5,20)*0.18:1; // press
+      const fade=outQuint(seg(t,T.sim+.9,.3))*(1-outQuint(seg(t,12.2,.3)));
+      cur_.style.left=x+'px';cur_.style.top=y+'px';cur_.style.transform=`scale(${tp})`;cur_.style.opacity=fade*.95;
+      $('tapdim').style.opacity=t>=tapT? .18*(1-outQuint(seg(t,tapT+.05,.4))):0;
+    }
+    // particles at sent
+    const po=t-T.sent;
+    parts.forEach(pt=>{
+      const on=po>0&&po<pt.d;show(pt.e,on);
+      if(on){const τ=po;const x=L.phoneX+L.phoneW/2+pt.vx*τ*.9, y=L.phoneY+phoneH*.32+pt.vy*τ+900*τ*τ;pt.e.style.left=x+'px';pt.e.style.top=y+'px';pt.e.style.opacity=1-inQuad(τ/pt.d);pt.e.style.transform=`scale(${1-τ/pt.d*.5}) rotate(${pt.r*360+τ*300}deg)`}
+    });
+  }
+
+  // ---- deck ----
+  const deckOn=t>=T.deck-.1 && t<T.feats+.5;
+  show($('deck'),deckOn);
+  if(deckOn){
+    capSet('cap2','Cuotas claras. Abonos validados.','Se descuenta de tu nómina. Cada pago queda registrado.');
+    capAnim('cap2',t,T.deck+.1,T.feats-.45);
+    cards.forEach((c,i)=>{
+      const p=spring(t-(T.deck+.25+i*.18),.7,11);
+      const pe=inQuad(seg(t,T.feats-.45+i*.06,.4));
+      const rot=(i-1)*(V?5:4);
+      c.style.transform=`translateY(${(1-p)*700+pe*900}px) rotate(${rot*p}deg) scale(${.9+.1*p})`;
+      c.style.opacity=clamp(p*2);
+      c.style.zIndex=i===1?3:1;
+    });
+  }
+
+  // ---- features ----
+  const featOn=t>=T.feats-.1 && t<T.outro+.4;
+  show($('feats'),featOn);
+  if(featOn){
+    capSet('cap3','Todo desde tu teléfono.','Sin filas, sin papeleo, sin sorpresas.');
+    capAnim('cap3',t,T.feats+.1,T.outro-.4);
+    featEls.forEach((f,i)=>{
+      const p=spring(t-(T.feats+.5+i*.25),.68,12);
+      const pe=inQuad(seg(t,T.outro-.45+i*.04,.35));
+      f.style.transform=`translateX(${(1-p)*(V?-500:600)+pe*(V?-700:800)}px) scale(${.85+.15*p})`;
+      f.style.opacity=clamp(p*2)*(1-pe);
+      const ic=f.querySelector('.ic');const pi=spring(t-(T.feats+.75+i*.25),.5,16);ic.style.transform=`scale(${Math.max(.001,pi)})`;
+    });
+  }
+
+  // ---- outro ----
+  const outOn=t>=T.outro-.1;
+  show($('outro'),outOn);
+  if(outOn){
+    const b=$('badge2'),wm=$('wm2'),tg=$('tag2'),t3=$('tag3');
+    const p=spring(t-T.outro,.66,11);
+    const cx=W/2;
+    const wmW=wm.offsetWidth;
+    if(V){
+      const by=H*.36-L.outBadge/2-90; b.style.left=(cx-L.outBadge/2)+'px';b.style.top=by+'px';
+      wm.style.left=(cx-wmW/2)+'px';wm.style.top=(by+L.outBadge+40)+'px';
+      tg.style.left=(cx-tg.offsetWidth/2)+'px';tg.style.top=(by+L.outBadge+40+L.outWm*1.5)+'px';
+      t3.style.left=(cx-t3.offsetWidth/2)+'px';t3.style.top=(H-170)+'px';
+    } else {
+      const total=L.outBadge+40+wmW, bx=cx-total/2, by=H*.42-L.outBadge/2;
+      b.style.left=bx+'px';b.style.top=by+'px';
+      wm.style.left=(bx+L.outBadge+40)+'px';wm.style.top=(by+L.outBadge/2-L.outWm*.62)+'px';
+      tg.style.left=(cx-tg.offsetWidth/2)+'px';tg.style.top=(by+L.outBadge+70)+'px';
+      t3.style.left=(cx-t3.offsetWidth/2)+'px';t3.style.top=(H-120)+'px';
+    }
+    b.style.transform=`scale(${Math.max(.001,p)}) rotate(${(1-p)*20}deg)`;b.style.opacity=clamp(p*3);
+    const pw=outExpo(seg(t,T.outro+.4,.8));
+    wm.style.clipPath=`inset(0 ${(1-pw)*100}% 0 0)`;wm.style.transform=`translateX(${(1-pw)*-50}px)`;
+    const pt=outQuint(seg(t,T.outro+1.0,.6));tg.style.opacity=.9*pt;tg.style.transform=`translateY(${(1-pt)*30}px)`;
+    const p3=outQuint(seg(t,T.outro+1.5,.6));t3.style.opacity=.55*p3;
+    // final fade to navy
+    const pf=inQuad(seg(t,T.end-.6,.6));stage.style.filter=`brightness(${1-pf})`;
+  } else stage.style.filter='';
+}
+window.seek=seek; window.DUR=T.end;
+document.fonts.ready.then(()=>{window.READY=true; seek(parseFloat(Q.get('t')||'0'))});
+</script>
+</body>
+</html>
