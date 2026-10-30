@@ -1,0 +1,61 @@
+# Compila un APK instalable de Quincena+ (release firmado con la llave debug de Expo).
+# Se descarga desde la pestaña Actions → la ejecución → Artifacts.
+name: APK Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      demo:
+        description: 'Modo demo (datos simulados, sin backend)'
+        type: boolean
+        default: true
+  push:
+    branches: ['claude/**']
+    paths:
+      - '.github/workflows/android-apk.yml'
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      EXPO_PUBLIC_USE_MOCK: ${{ (github.event_name == 'push' || inputs.demo) && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: npm ci
+
+      - run: npx tsc --noEmit
+
+      - name: Generar proyecto nativo
+        run: npx expo prebuild --platform android --no-install
+        env:
+          CI: 1
+
+      - name: Compilar APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+
+      - name: Renombrar
+        run: |
+          suffix=$([ "$EXPO_PUBLIC_USE_MOCK" = "1" ] && echo demo || echo api)
+          cp android/app/build/outputs/apk/release/app-release.apk "quincena-plus-$suffix.apk"
+          echo "APK_NAME=quincena-plus-$suffix" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}
+          path: ${{ env.APK_NAME }}.apk
+          retention-days: 30
