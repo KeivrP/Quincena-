@@ -1,10 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Crypto from 'expo-crypto';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
-import { USE_MOCK } from '../../api/config';
 import { messageFor } from '../../api/errors';
 import { appApi } from '../../api/endpoints';
 import type { CreditAgreement } from '../../api/types';
@@ -12,18 +10,6 @@ import { useAuth } from '../../auth/AuthProvider';
 import { Steps } from '../../components/Steps';
 import { Banner, Button, Card, OrangeHeader, Screen, T } from '../../components/ui';
 import { colors, radius, space } from '../../theme';
-
-function toHex(buf: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/** SHA-256 del PDF exacto que el trabajador vio. La URL es prefirmada: GET sin Authorization. */
-async function hashPdf(url: string): Promise<string> {
-  if (USE_MOCK) return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, url);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('expired');
-  return toHex(await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, await res.arrayBuffer()));
-}
 
 export default function ContractScreen() {
   const { refreshProfile } = useAuth();
@@ -61,17 +47,14 @@ export default function ContractScreen() {
     setLoading(true);
     setError(null);
     try {
+      // Basta con aceptar los términos: se registra la versión vigente del contrato.
       const fresh = (await load()) ?? contract;
       if (!fresh) return;
-      const hash = await hashPdf(fresh.download_url);
-      if (fresh.pdf_sha256 && fresh.pdf_sha256.toLowerCase() !== hash) {
-        throw new Error('El documento cambió. Ábrelo de nuevo antes de firmar.');
-      }
-      await appApi.signCreditAgreement(hash);
+      await appApi.signCreditAgreement(fresh.pdf_sha256);
       await refreshProfile();
       router.replace('/');
     } catch (e) {
-      setError(e instanceof Error && !('problem' in e) ? e.message : messageFor(e));
+      setError(messageFor(e));
     } finally {
       setLoading(false);
     }
@@ -142,11 +125,11 @@ export default function ContractScreen() {
             size={22}
             color={accepted ? colors.primary : colors.textMuted}
           />
-          <T style={{ flex: 1 }}>He leído el contrato y acepto sus condiciones.</T>
+          <T style={{ flex: 1 }}>Acepto los términos y condiciones.</T>
         </Pressable>
 
         <Button
-          title="Firmar contrato"
+          title="Aceptar y continuar"
           icon="create-outline"
           style={{ marginTop: space.lg }}
           disabled={!accepted || !contract}
@@ -155,7 +138,7 @@ export default function ContractScreen() {
         />
         {!opened ? (
           <T variant="caption" color={colors.textMuted} style={{ textAlign: 'center', marginTop: space.sm }}>
-            Te recomendamos leerlo completo antes de firmar.
+            Puedes leer el contrato completo cuando quieras.
           </T>
         ) : null}
       </Screen>

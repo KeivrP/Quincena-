@@ -11,8 +11,6 @@ on:
         default: true
   push:
     branches: ['claude/**']
-    paths:
-      - '.github/workflows/android-apk.yml'
 
 jobs:
   apk:
