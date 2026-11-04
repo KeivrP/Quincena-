@@ -1,10 +1,13 @@
 import Big from 'big.js';
-import type { Loan, LoanDetail, LoanInstallment, Profile } from './types';
+import * as Crypto from 'expo-crypto';
+import type { ExtraCreditRequest, Loan, LoanDetail, LoanInstallment, Profile } from './types';
 
 // Servidor simulado en memoria para ver la app sin credenciales (EXPO_PUBLIC_USE_MOCK=1).
 // Reproduce los valores mágicos del banco simulado del backend:
 //   monto terminado en .14 → rechazo del banco (502) · .13 → en revisión (202) ·
 //   referencia SIMFAIL… → el banco no concilia el abono (422).
+// Extra-crédito: la solicitud queda «pendiente» unos segundos y luego RRHH (simulado) la resuelve:
+//   monto terminado en .14 → rechazada · .12 → aprobada por la mitad · otro → aprobada completa.
 // Formas calcadas de `src/disglobal/modules/*/schemas.py` del backend real.
 
 const RATE = '38.50';
@@ -17,6 +20,7 @@ const state = {
   payout: null as { bank_code: string; phone: string; national_id: string } | null,
   limit: '600.00',
   loans: [] as LoanDetail[],
+  extraCredits: [] as ExtraCreditRequest[],
   seenKeys: new Map<string, { status: number; body: unknown }>(),
 };
 
@@ -51,6 +55,10 @@ function addDays(days: number): string {
 const INSTALLMENTS_COUNT = 3;
 const SAMPLE_PDF = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
 
+// En modo demo la app calcula la huella sobre la URL, no sobre el PDF (onboarding/contract.tsx): el
+// servidor simulado tiene que devolver esa misma huella o la firma falla con «El documento cambió».
+const samplePdfSha256 = () => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, SAMPLE_PDF);
+
 function buildQuote(principal: string) {
   const a = new Big(principal || '0');
   const total = a.times(1.08).round(2);
@@ -76,11 +84,83 @@ function buildQuote(principal: string) {
     total_payable_bs: total.times(RATE).toFixed(2),
     installments,
     would_be_rejected: over,
+    exceeds_credit_limit: over,
     rejection_reason: over ? `El monto supera tu cupo disponible ($${available.toFixed(2)}).` : null,
     fx_rate_is_stale: false,
     fx_rate_age_days: 0,
     fx_rate_confirmation_required: false,
   };
+}
+
+type Quote = ReturnType<typeof buildQuote>;
+
+function createLoan(q: Quote): LoanDetail {
+  const id = `${state.loans.length + 1}`.padStart(8, '0') + '-0000-0000-0000-000000000000';
+  const now = new Date().toISOString();
+  const installments: LoanInstallment[] = q.installments.map((i) => ({
+    sequence_number: i.sequence_number,
+    due_date: i.due_date,
+    period_key: i.period_key,
+    principal_component_usd: i.principal_component_usd,
+    interest_or_fee_component_usd: i.interest_or_fee_component_usd,
+    total_amount_usd: i.total_amount_usd,
+    status: 'scheduled',
+    paid_principal_usd: '0.00',
+    paid_fee_interest_usd: '0.00',
+    mora_accrued_usd: '0.00',
+    mora_paid_usd: '0.00',
+    outstanding_usd: i.total_amount_usd,
+    overdue_since: null,
+    paid_at: null,
+  }));
+  const loan: LoanDetail = {
+    id,
+    employee_id: '00000000-0000-0000-0000-000000000001',
+    credit_product_id: '00000000-0000-0000-0000-000000000002',
+    status: 'active',
+    principal_usd: q.principal_usd,
+    installments_count: q.installments_count,
+    total_payable_usd: q.total_payable_usd,
+    charge_model_snapshot: 'flat_fee',
+    rate_percent_snapshot: '8.000',
+    payment_frequency_snapshot: 'monthly',
+    fx_rate_at_disbursement: RATE,
+    fx_rate_date: q.fx_rate_date,
+    requested_at: now,
+    disbursed_at: now,
+    paid_off_at: null,
+    created_at: now,
+    installments,
+    receipt_download_url: SAMPLE_PDF,
+  };
+  state.loans.unshift(loan);
+  return loan;
+}
+
+const RESOLVE_AFTER_MS = 8000;
+
+/** RRHH simulado: resuelve las solicitudes pendientes que ya llevan un rato esperando. */
+function resolveExtraCredits() {
+  const now = Date.now();
+  for (const r of state.extraCredits) {
+    if (r.status !== 'pending' || now - Date.parse(r.created_at) < RESOLVE_AFTER_MS) continue;
+    const resolvedAt = new Date().toISOString();
+    r.resolved_at = resolvedAt;
+    r.updated_at = resolvedAt;
+    r.resolved_by = { id: 'rrhh', full_name: 'Roberto Recursos', email: 'rrhh@demo.com' };
+    if (r.requested_amount_usd.endsWith('.14')) {
+      r.status = 'rejected';
+      r.rejection_reason = 'Tu nivel de endeudamiento actual no permite un monto adicional este mes.';
+      continue;
+    }
+    const approved = r.requested_amount_usd.endsWith('.12')
+      ? new Big(r.requested_amount_usd).div(2).round(2).toFixed(2)
+      : r.requested_amount_usd;
+    const loan = createLoan(buildQuote(approved));
+    r.status = 'approved';
+    r.approved_amount_usd = approved;
+    r.loan_id = loan.id;
+  }
 }
 
 function profile(): Profile {
@@ -162,7 +242,7 @@ export async function mockRequest(
     case route === 'GET /app/credit-agreement':
       return json(200, {
         signed: state.agreementSigned,
-        pdf_sha256: 'a'.repeat(64),
+        pdf_sha256: await samplePdfSha256(),
         download_url: SAMPLE_PDF,
         accepted_at: state.agreementSigned ? new Date().toISOString() : null,
       });
@@ -170,7 +250,7 @@ export async function mockRequest(
       state.agreementSigned = true;
       return remember(200, {
         signed: true,
-        pdf_sha256: 'a'.repeat(64),
+        pdf_sha256: await samplePdfSha256(),
         download_url: SAMPLE_PDF,
         accepted_at: new Date().toISOString(),
       });
@@ -204,8 +284,7 @@ export async function mockRequest(
       return json(200, buildQuote(body.principal_usd));
     case route === 'POST /app/loans': {
       const q = buildQuote(body.principal_usd);
-      if (q.would_be_rejected)
-        return problem(422, 'Cupo insuficiente', q.rejection_reason!, 'credit_limit_exceeded');
+      if (q.would_be_rejected) return problem(422, 'Cupo insuficiente', q.rejection_reason!, 'credit_limit_exceeded');
       if (q.principal_usd.endsWith('.14'))
         return problem(
           502,
@@ -226,45 +305,7 @@ export async function mockRequest(
           },
           true,
         );
-      const id = `${state.loans.length + 1}`.padStart(8, '0') + '-0000-0000-0000-000000000000';
-      const now = new Date().toISOString();
-      const installments: LoanInstallment[] = q.installments.map((i) => ({
-        sequence_number: i.sequence_number,
-        due_date: i.due_date,
-        period_key: i.period_key,
-        principal_component_usd: i.principal_component_usd,
-        interest_or_fee_component_usd: i.interest_or_fee_component_usd,
-        total_amount_usd: i.total_amount_usd,
-        status: 'scheduled',
-        paid_principal_usd: '0.00',
-        paid_fee_interest_usd: '0.00',
-        mora_accrued_usd: '0.00',
-        mora_paid_usd: '0.00',
-        outstanding_usd: i.total_amount_usd,
-        overdue_since: null,
-        paid_at: null,
-      }));
-      const loan: LoanDetail = {
-        id,
-        employee_id: '00000000-0000-0000-0000-000000000001',
-        credit_product_id: '00000000-0000-0000-0000-000000000002',
-        status: 'active',
-        principal_usd: q.principal_usd,
-        installments_count: q.installments_count,
-        total_payable_usd: q.total_payable_usd,
-        charge_model_snapshot: 'flat_fee',
-        rate_percent_snapshot: '8.000',
-        payment_frequency_snapshot: 'monthly',
-        fx_rate_at_disbursement: RATE,
-        fx_rate_date: q.fx_rate_date,
-        requested_at: now,
-        disbursed_at: now,
-        paid_off_at: null,
-        created_at: now,
-        installments,
-        receipt_download_url: SAMPLE_PDF,
-      };
-      state.loans.unshift(loan);
+      const loan = createLoan(q);
       return remember(200, {
         loan: toLoan(loan),
         receipt_download_url: SAMPLE_PDF,
@@ -272,10 +313,7 @@ export async function mockRequest(
       });
     }
     case route === 'GET /app/loans':
-      return json(
-        200,
-        state.loans.map(toLoan),
-      );
+      return json(200, state.loans.map(toLoan));
     case /^GET \/app\/loans\/[^/]+$/.test(route): {
       const l = state.loans.find((x) => x.id === decodeURIComponent(path.split('/').pop()!));
       return l ? json(200, l) : problem(404, 'Recurso no encontrado', 'El préstamo no existe.', 'not_found');
@@ -291,6 +329,8 @@ export async function mockRequest(
           'payment_not_validated',
         );
       const loan = state.loans.find((x) => x.id === loanId);
+      let toPrincipal = new Big(0);
+      let toInterest = new Big(0);
       if (loan) {
         let remaining = new Big(body.amount_usd as string);
         for (const inst of loan.installments) {
@@ -298,7 +338,14 @@ export async function mockRequest(
           if (inst.status === 'paid') continue;
           const instOutstanding = new Big(inst.outstanding_usd);
           const apply = remaining.lt(instOutstanding) ? remaining : instOutstanding;
-          inst.paid_principal_usd = new Big(inst.paid_principal_usd).plus(apply).toFixed(2);
+          // Orden del backend: mora → interés/comisión → capital (aquí no hay mora).
+          const interestDue = new Big(inst.interest_or_fee_component_usd).minus(inst.paid_fee_interest_usd);
+          const interest = apply.lt(interestDue) ? apply : interestDue;
+          const principal = apply.minus(interest);
+          inst.paid_fee_interest_usd = new Big(inst.paid_fee_interest_usd).plus(interest).toFixed(2);
+          inst.paid_principal_usd = new Big(inst.paid_principal_usd).plus(principal).toFixed(2);
+          toInterest = toInterest.plus(interest);
+          toPrincipal = toPrincipal.plus(principal);
           inst.outstanding_usd = new Big(inst.outstanding_usd).minus(apply).toFixed(2);
           remaining = remaining.minus(apply);
           if (new Big(inst.outstanding_usd).eq(0)) {
@@ -317,7 +364,94 @@ export async function mockRequest(
         amount_usd: body.amount_usd,
         provider_reference: body.reference,
         confirmed_at: new Date().toISOString(),
+        applied: {
+          principal_usd: toPrincipal.toFixed(2),
+          interest_or_fee_usd: toInterest.toFixed(2),
+          mora_usd: '0.00',
+        },
       });
+    }
+    case route === 'POST /app/extra-credit-requests': {
+      resolveExtraCredits();
+      const amount = new Big(body.requested_amount_usd || '0');
+      const available = new Big(state.limit).minus(used());
+      if (amount.lte(available))
+        return json(
+          422,
+          {
+            type: 'https://disglobal.dev/errors/business_rule_violation',
+            title: 'Regla de negocio',
+            status: 422,
+            code: 'business_rule_violation',
+            detail: 'Este monto está dentro de tu cupo disponible; solicítalo como un crédito normal.',
+            extra: {
+              reason: 'within_credit_limit',
+              credit_limit_usd: state.limit,
+              existing_principal_usd: used().toFixed(2),
+              requested_usd: amount.toFixed(2),
+            },
+          },
+          true,
+        );
+      if (state.extraCredits.some((r) => r.status === 'pending'))
+        return json(
+          409,
+          {
+            type: 'https://disglobal.dev/errors/conflict',
+            title: 'Conflicto',
+            status: 409,
+            code: 'conflict',
+            detail: 'Ya tienes una solicitud de extra-crédito pendiente.',
+            extra: { reason: 'extra_credit_request_pending' },
+          },
+          true,
+        );
+      const now = new Date().toISOString();
+      const r: ExtraCreditRequest = {
+        id: `ec-${state.extraCredits.length + 1}`,
+        employee_id: '00000000-0000-0000-0000-000000000001',
+        employee_full_name: 'María Fernanda Pérez',
+        employee_national_id: 'V18765432',
+        requested_amount_usd: amount.toFixed(2),
+        snapshot_credit_limit_usd: state.limit,
+        snapshot_outstanding_principal_usd: used().toFixed(2),
+        employee_note: body.note ?? null,
+        status: 'pending',
+        approved_amount_usd: null,
+        rejection_reason: null,
+        loan_id: null,
+        requested_by_user_id: '00000000-0000-0000-0000-000000000001',
+        resolved_at: null,
+        resolved_by: null,
+        created_at: now,
+        updated_at: now,
+      };
+      state.extraCredits.unshift(r);
+      return remember(201, r);
+    }
+    case /^POST \/app\/extra-credit-requests\/[^/]+\/cancel$/.test(route): {
+      resolveExtraCredits();
+      const r = state.extraCredits.find((x) => x.id === decodeURIComponent(path.split('/')[3]));
+      if (!r) return problem(404, 'Recurso no encontrado', 'La solicitud no existe.', 'not_found');
+      if (r.status !== 'pending')
+        return problem(409, 'Conflicto', 'Solo se puede cancelar una solicitud pendiente.', 'conflict');
+      r.status = 'cancelled';
+      r.resolved_at = r.updated_at = new Date().toISOString();
+      return remember(200, r);
+    }
+    case route.startsWith('GET /app/extra-credit-requests'): {
+      resolveExtraCredits();
+      const [p, qs] = path.split('?');
+      const id = p.split('/')[3];
+      if (id) {
+        const r = state.extraCredits.find((x) => x.id === decodeURIComponent(id));
+        return r ? json(200, r) : problem(404, 'Recurso no encontrado', 'La solicitud no existe.', 'not_found');
+      }
+      const status = new URLSearchParams(qs ?? '').get('status');
+      return json(
+        200,
+        state.extraCredits.filter((r) => !status || r.status === status),
+      );
     }
     default:
       return problem(404, 'No encontrado', `Ruta simulada inexistente: ${route}`, 'not_found');

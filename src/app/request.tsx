@@ -174,7 +174,22 @@ export default function RequestCredit() {
                   />
                 </View>
               ) : null}
-              {quote.would_be_rejected ? (
+              {quote.would_be_rejected && quote.exceeds_credit_limit ? (
+                // Lo único que falla es el cupo: en vez de un error, se ofrece el extra-crédito.
+                <View style={{ marginTop: space.sm, gap: space.sm }}>
+                  <Banner
+                    tone="info"
+                    title="Supera tu cupo disponible"
+                    message={`Puedes pedirlo como extra-crédito: RRHH de tu empresa lo revisa y puede aprobarlo completo o por un monto menor. Tu cupo hoy es ${formatUsd(profile?.credit_available_usd)}.`}
+                  />
+                  <Button
+                    title="Pedir como extra-crédito"
+                    icon="trending-up"
+                    variant="outline"
+                    onPress={() => router.push({ pathname: '/extra-credit/new', params: { amount } })}
+                  />
+                </View>
+              ) : quote.would_be_rejected ? (
                 <View style={{ marginTop: space.sm }}>
                   <Banner
                     tone="warning"
@@ -202,7 +217,9 @@ export default function RequestCredit() {
         ) : null}
 
         <Button
-          title={sendError?.retryable ? 'Reintentar' : quote ? `Recibir ${formatUsd(quote.principal_usd)}` : 'Solicitar'}
+          title={
+            sendError?.retryable ? 'Reintentar' : quote ? `Recibir ${formatUsd(quote.principal_usd)}` : 'Solicitar'
+          }
           icon="flash"
           style={{ marginTop: space.lg }}
           disabled={!quote || quote.would_be_rejected || quoting}

@@ -3,7 +3,7 @@ import { useState, type ComponentProps } from 'react';
 import { Image, StyleSheet, View, useWindowDimensions, type ImageSourcePropType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Illustration } from '../components/Illustration';
-import { Button, Logo, RoundArrowButton, T } from '../components/ui';
+import { Button, RoundArrowButton, T, Wordmark } from '../components/ui';
 import { colors, space } from '../theme';
 
 type IconName = ComponentProps<typeof Illustration>['icon'];
@@ -55,15 +55,7 @@ export default function Welcome() {
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <View style={styles.top}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-          <Logo size={34} />
-          <T variant="h3">
-            Quincena
-            <T variant="h3" color={colors.accent}>
-              +
-            </T>
-          </T>
-        </View>
+        <Wordmark size="sm" />
         {!last ? (
           <T variant="label" color={colors.textMuted} onPress={() => router.push('/login')}>
             Saltar

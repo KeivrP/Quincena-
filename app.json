@@ -1,20 +1,22 @@
 {
   "expo": {
-    "name": "Quincena+",
-    "slug": "quincena-plus",
-    "scheme": "quincenaplus",
+    "name": "Real ½",
+    "slug": "real-medio",
+    "scheme": "realmedio",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.disglobal.quincenaplus"
+      "bundleIdentifier": "com.disglobal.realmedio"
     },
     "android": {
-      "package": "com.disglobal.quincenaplus",
+      "package": "com.disglobal.realmedio",
       "allowBackup": false,
-      "permissions": ["INTERNET"],
+      "permissions": [
+        "INTERNET"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#0F3D85",
         "foregroundImage": "./assets/android-icon-foreground.png",

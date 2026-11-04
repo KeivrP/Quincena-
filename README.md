@@ -1,6 +1,7 @@
-# Quincena+ (nombre provisional)
+# Real ½ — app del trabajador
 
 App móvil del **trabajador** para el crédito de nómina DisGlobal. React Native + Expo (SDK 58) + Expo Router, TypeScript.
+Misma marca que el portal web (Displata-Portal): nombre **Real ½** e isotipo «½» en esmeralda sobre azul marino.
 Formas, tipografía (Poppins) y personajes 3D tomados del Figma *Pure Edu*; paleta financiera azul marino `#0F3D85` + verde esmeralda `#12B886`.
 
 ![Pantallas](docs/capturas/00-todas.png)
@@ -19,6 +20,10 @@ Modo demo: entra con `maria.perez@demo.com` / `Temporal123` (ya vienen escritos)
 simulan rechazo del banco, en `.13` "en revisión", y una referencia que empiece con `SIMFAIL` un abono que no concilia,
 igual que el banco simulado del backend.
 
+Extra-crédito en modo demo: pide un monto mayor a tu cupo y toca «Pedir como extra-crédito». La solicitud queda en
+revisión unos 8 segundos y luego RRHH (simulado) la resuelve al volver a consultarla: un monto que termina en `.14` se
+rechaza, en `.12` se aprueba por la mitad, y cualquier otro se aprueba completo.
+
 Para usar el servidor real pon `EXPO_PUBLIC_USE_MOCK=0` (o bórralo) y deja `EXPO_PUBLIC_API_BASE_URL`.
 
 APK de prueba: `npx eas-cli@latest build -p android --profile preview` (requiere cuenta Expo) o `npx expo run:android`.
@@ -27,8 +32,14 @@ APK de prueba: `npx eas-cli@latest build -p android --profile preview` (requiere
 
 Bienvenida → Login → cambio de contraseña obligatorio → firma del contrato marco (hash SHA‑256 del PDF) → datos de cobro
 (banco, móvil venezolano, cédula propia) → Inicio con cupo → Simular / Solicitar (3 desenlaces: desembolsado, rechazado,
-en revisión) → Mis créditos con cronograma y comprobante → Reportar abono. También: "olvidé mi contraseña" con código de
-6 dígitos y la pantalla "revisa tu correo" para cuentas nuevas.
+en revisión) → Mis créditos con cronograma y comprobante → Reportar abono, con el desglose de cuánto fue a capital,
+interés y mora. También: "olvidé mi contraseña" con código de 6 dígitos y la pantalla "revisa tu correo" para cuentas
+nuevas.
+
+Extra-crédito (novedades del backend del 2026-11-03, punto 4): si el monto supera el cupo y es lo único que falla
+(`exceeds_credit_limit` en la cotización), se ofrece pedirlo como extra-crédito. RRHH lo aprueba (completo o por menos) o
+lo rechaza; el trabajador ve el estado en el inicio y en Perfil → Mis extra-créditos, y puede cancelarlo mientras está
+pendiente. Pantallas en `src/app/extra-credit/`.
 
 ## Reglas de la guía y dónde están
 

@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError, messageFor } from '../api/errors';
 import { USE_MOCK } from '../api/config';
 import { useAuth } from '../auth/AuthProvider';
-import { Banner, Button, Field, Logo, T } from '../components/ui';
+import { Banner, Button, Field, T, Wordmark } from '../components/ui';
 import { isValidEmail } from '../lib/validators';
 import { colors, radius, shadow, space } from '../theme';
 
@@ -38,7 +38,7 @@ export default function Login() {
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={{ padding: space.lg }} keyboardShouldPersistTaps="handled">
             <View style={{ alignItems: 'center', marginTop: space.lg, marginBottom: space.lg }}>
-              <Logo size={64} light />
+              <Wordmark size="lg" light />
               <T variant="h1" color={colors.white} style={{ marginTop: space.md }}>
                 Bienvenido
               </T>

@@ -6,9 +6,10 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-n
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { appApi } from '../../api/endpoints';
 import { messageFor } from '../../api/errors';
-import type { Loan } from '../../api/types';
+import type { ExtraCreditRequest, Loan } from '../../api/types';
 import { useAuth } from '../../auth/AuthProvider';
 import { CreditCard } from '../../components/CreditCard';
+import { ExtraCreditCard } from '../../components/ExtraCreditCard';
 import { Banner, Card, EmptyState, ProgressBar, T } from '../../components/ui';
 import { formatUsd, ratio } from '../../lib/money';
 import { colors, radius, shadow, space } from '../../theme';
@@ -20,17 +21,35 @@ const ACTIONS = [
   { icon: 'list', label: 'Créditos', to: '/credits' },
 ] as const;
 
+const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** La solicitud a destacar en el inicio: la que está en revisión, o una resuelta hace menos de 7 días. */
+function recentExtraCredit(list: ExtraCreditRequest[]): ExtraCreditRequest | null {
+  const pending = list.find((r) => r.status === 'pending');
+  if (pending) return pending;
+  const latest = list.find((r) => r.status === 'approved' || r.status === 'rejected');
+  if (latest?.resolved_at && Date.now() - Date.parse(latest.resolved_at) < RECENT_MS) return latest;
+  return null;
+}
+
 export default function Home() {
   const { profile, refreshProfile } = useAuth();
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [extra, setExtra] = useState<ExtraCreditRequest | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       setError(null);
-      const [, loanList] = await Promise.all([refreshProfile(), appApi.loans()]);
+      const [, loanList, extraList] = await Promise.all([
+        refreshProfile(),
+        appApi.loans(),
+        // Secundario: si falla, el inicio se muestra igual, sin la tarjeta.
+        appApi.extraCreditRequests().catch(() => [] as ExtraCreditRequest[]),
+      ]);
       setLoans(loanList);
+      setExtra(recentExtraCredit(extraList));
     } catch (e) {
       setError(messageFor(e));
     }
@@ -126,6 +145,18 @@ export default function Home() {
               </Pressable>
             ))}
           </View>
+
+          {extra ? (
+            <>
+              <View style={styles.sectionHead}>
+                <T variant="h3">Extra-crédito</T>
+                <T variant="label" color={colors.primary} onPress={() => router.push('/extra-credit')}>
+                  Ver todos
+                </T>
+              </View>
+              <ExtraCreditCard request={extra} />
+            </>
+          ) : null}
 
           <View style={styles.sectionHead}>
             <T variant="h3">Créditos activos</T>

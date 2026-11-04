@@ -6,6 +6,8 @@ import type {
   CreditAgreement,
   CurrentUser,
   DirectPaymentRequest,
+  ExtraCreditRequest,
+  ExtraCreditStatus,
   Loan,
   LoanDetail,
   LoanQuote,
@@ -105,6 +107,32 @@ export const appApi = {
       request<PaymentTransaction>(`/app/loans/${encodeURIComponent(loanId)}/payments`, {
         method: 'POST',
         body,
+        idempotencyKey: key,
+      }),
+    ),
+
+  // ---------- Extra-crédito (punto 4): un monto por encima del cupo, que aprueba RRHH ----------
+
+  /** Solo puede haber una `pending` a la vez (409 `extra_credit_request_pending`). */
+  requestExtraCredit: (requested_amount_usd: string, note?: string) => {
+    const body = { requested_amount_usd, ...(note ? { note } : {}) };
+    return withIdempotency('extra-credit-request', body, (key) =>
+      request<ExtraCreditRequest>('/app/extra-credit-requests', { method: 'POST', body, idempotencyKey: key }),
+    );
+  },
+
+  /** Sin `limit` el backend devuelve la lista completa (no la página). */
+  extraCreditRequests: (status?: ExtraCreditStatus) =>
+    request<ExtraCreditRequest[]>(`/app/extra-credit-requests${status ? `?status=${status}` : ''}`),
+
+  extraCreditRequest: (id: string) =>
+    request<ExtraCreditRequest>(`/app/extra-credit-requests/${encodeURIComponent(id)}`),
+
+  /** Solo si está `pending`. */
+  cancelExtraCredit: (id: string) =>
+    withIdempotency(`extra-credit-cancel`, { id }, (key) =>
+      request<ExtraCreditRequest>(`/app/extra-credit-requests/${encodeURIComponent(id)}/cancel`, {
+        method: 'POST',
         idempotencyKey: key,
       }),
     ),

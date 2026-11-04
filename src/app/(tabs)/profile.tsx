@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
+import Constants from 'expo-constants';
 import { Alert, Platform, Pressable, View } from 'react-native';
 import { appApi } from '../../api/endpoints';
 import type { PayoutAccount } from '../../api/types';
 import { useAuth } from '../../auth/AuthProvider';
+import { BRAND } from '../../config/brand';
 import { Card, OrangeHeader, Screen, T } from '../../components/ui';
 import { colors, space } from '../../theme';
 
@@ -49,6 +51,12 @@ export default function Profile() {
       label: 'Contrato marco',
       detail: profile?.credit_agreement_signed ? 'Firmado' : 'Pendiente',
       onPress: () => router.push('/onboarding/contract'),
+    },
+    {
+      icon: 'trending-up-outline',
+      label: 'Mis extra-créditos',
+      detail: 'Montos por encima de tu cupo',
+      onPress: () => router.push('/extra-credit'),
     },
     { icon: 'lock-closed-outline', label: 'Cambiar contraseña', onPress: () => router.push('/forgot-password') },
     { icon: 'help-circle-outline', label: 'Ayuda', detail: 'Consulta con RRHH de tu empresa', onPress: () => {} },
@@ -116,7 +124,7 @@ export default function Profile() {
           ))}
         </Card>
         <T variant="caption" color={colors.textMuted} style={{ textAlign: 'center', marginTop: space.lg }}>
-          Quincena+ v0.1 · Crédito de nómina DisGlobal
+          {BRAND.name} v{Constants.expoConfig?.version ?? '0.1.0'} · {BRAND.tagline}
         </T>
       </Screen>
     </View>

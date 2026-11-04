@@ -97,6 +97,11 @@ export interface LoanQuote {
   installments: LoanQuoteInstallment[];
   would_be_rejected: boolean;
   rejection_reason?: string | null;
+  /**
+   * El monto supera el cupo y es lo ÚNICO que falla. Junto con `would_be_rejected`, en vez de un
+   * error se ofrece pedirlo como extra-crédito.
+   */
+  exceeds_credit_limit?: boolean;
   fx_rate_source?: string | null;
   fx_rate_source_date?: string | null;
   fx_rate_is_stale: boolean;
@@ -158,12 +163,52 @@ export type LoanRequestOutcome =
   | { status: 'rejected'; message: string }
   | { status: 'in_review'; message: string };
 
+/** Cómo se repartió ESE abono. Orden del backend: mora → interés/comisión → capital. */
+export interface PaymentApplied {
+  principal_usd: Money;
+  interest_or_fee_usd: Money;
+  mora_usd: Money;
+}
+
 export interface PaymentTransaction {
   id: string;
   loan_id: string | null;
   amount_usd: Money;
   provider_reference: string;
   confirmed_at: string;
+  applied: PaymentApplied;
+}
+
+// ---------- Extra-crédito: un monto por encima del cupo, que aprueba RRHH ----------
+
+export type ExtraCreditStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+export interface UserSummary {
+  id: string;
+  full_name: string;
+  email: string;
+}
+
+/** `ExtraCreditRequestResponse` del backend (origination/schemas.py). */
+export interface ExtraCreditRequest {
+  id: string;
+  employee_id: string;
+  employee_full_name?: string | null;
+  employee_national_id?: string | null;
+  requested_amount_usd: Money;
+  /** Cupo y deuda del trabajador al momento de pedir. */
+  snapshot_credit_limit_usd: Money;
+  snapshot_outstanding_principal_usd: Money;
+  employee_note: string | null;
+  status: ExtraCreditStatus;
+  approved_amount_usd: Money | null;
+  rejection_reason: string | null;
+  loan_id: string | null;
+  requested_by_user_id: string;
+  resolved_at: string | null;
+  resolved_by?: UserSummary | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface DirectPaymentRequest {

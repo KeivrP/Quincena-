@@ -7,8 +7,8 @@ import { appApi } from '../api/endpoints';
 import type { Bank, Loan, PaymentTransaction } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
 import { BankPicker } from '../components/BankPicker';
-import { Banner, Button, Card, EmptyState, Field, OrangeHeader, Screen, T } from '../components/ui';
-import { formatUsd, isValidAmount, normalizeAmountInput } from '../lib/money';
+import { Banner, Button, Card, EmptyState, Field, OrangeHeader, Row, Screen, T } from '../components/ui';
+import { formatUsd, isValidAmount, normalizeAmountInput, toBig } from '../lib/money';
 import { colors, radius, space } from '../theme';
 
 function today(): string {
@@ -41,7 +41,10 @@ export default function ReportPayment() {
         if (!params.loanId && active[0]) setLoanId(active[0].id);
       })
       .catch((e) => setError(messageFor(e)));
-    appApi.banks().then(setBanks).catch(() => {});
+    appApi
+      .banks()
+      .then(setBanks)
+      .catch(() => {});
   }, [params.loanId]);
 
   const submit = async () => {
@@ -87,6 +90,21 @@ export default function ReportPayment() {
             </T>
             <T color={colors.textMuted}>Ref. {result.provider_reference}</T>
           </Card>
+          {result.applied ? (
+            <Card style={{ marginTop: space.md }}>
+              <T variant="h3" style={{ marginBottom: space.xs }}>
+                ¿A qué se fue tu abono?
+              </T>
+              <T variant="caption" color={colors.textMuted} style={{ marginBottom: space.sm }}>
+                Primero se cubre la mora, luego el interés y el resto baja tu deuda.
+              </T>
+              {toBig(result.applied.mora_usd).gt(0) ? (
+                <Row label="Mora" value={formatUsd(result.applied.mora_usd)} />
+              ) : null}
+              <Row label="Interés o comisión" value={formatUsd(result.applied.interest_or_fee_usd)} />
+              <Row label="Capital (baja tu deuda)" value={formatUsd(result.applied.principal_usd)} strong />
+            </Card>
+          ) : null}
           <Button title="Listo" style={{ marginTop: space.lg }} onPress={() => router.replace('/home')} />
         </Screen>
       </View>

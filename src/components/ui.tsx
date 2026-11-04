@@ -17,6 +17,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BRAND } from '../config/brand';
 import { colors, fonts, radius, shadow, space } from '../theme';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -316,38 +317,63 @@ export function ProgressBar({
   );
 }
 
+/**
+ * Isotipo de Real ½: el «½» en esmeralda sobre un cuadrado redondeado, como el favicon del portal
+ * (public/logo.svg). Es el ícono de la app; el logo en pantalla es <Wordmark />. `light` lo pone sobre blanco, para fondos azul marino.
+ */
 export function Logo({ size = 64, light }: { size?: number; light?: boolean }) {
   return (
-    <View style={{ alignItems: 'center' }}>
-      <View
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={BRAND.spokenName}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size * 0.28,
+        backgroundColor: light ? colors.white : colors.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text
+        allowFontScaling={false}
         style={{
-          width: size,
-          height: size,
-          borderRadius: size * 0.28,
-          backgroundColor: light ? colors.white : colors.primary,
-          alignItems: 'center',
-          justifyContent: 'center',
+          fontFamily: fonts.bold,
+          fontSize: size * 0.62,
+          lineHeight: size * 0.8,
+          color: light ? colors.accentDark : colors.accent,
+          includeFontPadding: false,
         }}
       >
-        <T
-          style={{ fontFamily: fonts.bold, fontSize: size * 0.55, lineHeight: size * 0.7 }}
-          color={light ? colors.primary : colors.white}
-        >
-          Q
-        </T>
-        <View
-          style={{
-            position: 'absolute',
-            top: size * 0.16,
-            right: size * 0.16,
-            width: size * 0.16,
-            height: size * 0.16,
-            borderRadius: size,
-            backgroundColor: colors.accent,
-          }}
-        />
-      </View>
+        ½
+      </Text>
     </View>
+  );
+}
+
+/**
+ * Logo de Real ½: el mismo del portal web (Displata-Portal, src/components/layout/Logo.tsx).
+ * «Real ½» en Poppins Bold, interletrado -0.03em, azul marino y el «½» en esmeralda. `light` es
+ * el tono inverso del portal: blanco, para fondos azul marino. Tamaños del portal: sm 20, md 24,
+ * lg 36.
+ */
+export function Wordmark({ size = 'md', light }: { size?: 'sm' | 'md' | 'lg'; light?: boolean }) {
+  const fontSize = { sm: 20, md: 24, lg: 36 }[size];
+  return (
+    <Text
+      accessibilityRole="header"
+      accessibilityLabel={BRAND.spokenName}
+      style={{
+        fontFamily: fonts.bold,
+        fontSize,
+        lineHeight: fontSize * 1.15,
+        letterSpacing: -0.03 * fontSize,
+        color: light ? colors.white : colors.primary,
+      }}
+    >
+      Real <Text style={{ color: colors.accent }}>½</Text>
+    </Text>
   );
 }
 
