@@ -6,6 +6,7 @@ import { appApi } from '../../api/endpoints';
 import { useAuth } from '../../auth/AuthProvider';
 import { Banner, Button, Card, Field, OrangeHeader, Row, Screen, T, webNoOutline } from '../../components/ui';
 import { formatUsd, isValidAmount, normalizeAmountInput, toBig } from '../../lib/money';
+import { confirmSensitiveAction } from '../../security/device';
 import { colors, fonts, space } from '../../theme';
 
 const NOTE_MAX = 500;
@@ -34,8 +35,10 @@ export default function NewExtraCredit() {
 
   const submit = async () => {
     if (!valid) return setError({ kind: 'other', msg: 'Escribe un monto válido.', retryable: false });
-    setSending(true);
     setError(null);
+    const check = await confirmSensitiveAction(`Confirma la solicitud de ${formatUsd(amount)}`);
+    if (!check.ok) return setError({ kind: 'other', msg: check.message, retryable: false });
+    setSending(true);
     try {
       const req = await appApi.requestExtraCredit(amount, note.trim() || undefined);
       router.replace({ pathname: '/extra-credit/[id]', params: { id: req.id, created: '1' } });

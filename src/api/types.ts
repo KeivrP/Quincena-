@@ -76,12 +76,35 @@ export interface PayoutAccount {
   registered_at: string | null;
 }
 
+/**
+ * Cómo se arma el cronograma (lo elige el admin al crear el producto):
+ * - `french`: cuota pareja; si hay comisiones, van todas en la cuota 1.
+ * - `german`: capital fijo, el total de la cuota BAJA con el tiempo.
+ * - `flat_prorated`: sin interés, la comisión prorrateada en todas las cuotas.
+ */
+export type AmortizationMethod = 'french' | 'german' | 'flat_prorated';
+
+/** Una comisión del producto; su suma es `total_fees_usd`. */
+export interface LoanFee {
+  name: string;
+  percent: Money;
+  amount_usd: Money;
+  /** Solo en el detalle del préstamo otorgado: en qué cuota se cobra. */
+  applied_on_installment?: number | null;
+}
+
+// Los campos del desglose (tandas 2026-11-07 y 2026-11-08) se marcan opcionales mientras el
+// servidor de pruebas no los tenga desplegados: la UI cae al total combinado si faltan.
 export interface LoanQuoteInstallment {
   sequence_number: number;
   due_date: string;
   period_key: string;
   principal_component_usd: Money;
+  /** Interés + comisión sumados (= interest_component_usd + fee_component_usd). */
   interest_or_fee_component_usd: Money;
+  interest_component_usd?: Money;
+  fee_component_usd?: Money;
+  /** NO es constante: con `german` baja, y con `french` + comisiones la cuota 1 es más alta. */
   total_amount_usd: Money;
   total_amount_bs: Money;
 }
@@ -90,7 +113,12 @@ export interface LoanQuote {
   principal_usd: Money;
   installments_count: number;
   total_payable_usd: Money;
+  /** = total_interest_usd + total_fees_usd. */
   total_charge_usd: Money;
+  amortization_method?: AmortizationMethod;
+  total_interest_usd?: Money;
+  total_fees_usd?: Money;
+  fees?: LoanFee[];
   fx_rate_date: string;
   usd_to_bs_rate: Money;
   total_payable_bs: Money;
@@ -116,6 +144,8 @@ export interface LoanInstallment {
   period_key: string;
   principal_component_usd: Money;
   interest_or_fee_component_usd: Money;
+  interest_component_usd?: Money;
+  fee_component_usd?: Money;
   total_amount_usd: Money;
   status: LoanInstallmentStatus;
   paid_principal_usd: Money;
@@ -146,9 +176,16 @@ export interface Loan {
   created_at: string;
 }
 
+/** `GET /app/loans/{id}`: trae además las condiciones de nacimiento del préstamo (tanda 2026-11-08). */
 export interface LoanDetail extends Loan {
   installments: LoanInstallment[];
   receipt_download_url: string | null;
+  /** `charge_model_snapshot` es ambiguo entre french/german; este es el que manda. */
+  amortization_method_snapshot?: AmortizationMethod | null;
+  rate_period_months_snapshot?: number | null;
+  total_interest_usd?: Money;
+  total_fees_usd?: Money;
+  fees?: LoanFee[];
 }
 
 export interface LoanApplicationResult {

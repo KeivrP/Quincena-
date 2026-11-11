@@ -65,7 +65,11 @@ export const appApi = {
 
   payoutAccount: () => request<PayoutAccount>('/app/payout-account'),
 
-  savePayoutAccount: (body: { bank_code: string; phone: string; national_id: string }) =>
+  /**
+   * Cambiar una cuenta YA registrada exige `current_password` (el servidor responde 422
+   * `current_password_required` / `invalid_current_password`); el primer registro, no.
+   */
+  savePayoutAccount: (body: { bank_code: string; phone: string; national_id: string; current_password?: string }) =>
     request<PayoutAccount>('/app/payout-account', { method: 'PUT', body }),
 
   quote: (principal_usd: string) => request<LoanQuote>('/app/loans/quote', { method: 'POST', body: { principal_usd } }),

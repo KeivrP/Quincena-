@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
@@ -5,9 +6,12 @@ import { ApiError, messageFor } from '../api/errors';
 import { appApi } from '../api/endpoints';
 import type { LoanQuote } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
+import { ChargeBreakdown } from '../components/ChargeBreakdown';
 import { Illustration } from '../components/Illustration';
 import { Banner, Button, Card, OrangeHeader, Row, Screen, T, webNoOutline } from '../components/ui';
 import { formatBs, formatUsd, isValidAmount, normalizeAmountInput } from '../lib/money';
+import { installmentBreakdown, scheduleShape, shapeHint } from '../lib/schedule';
+import { confirmSensitiveAction } from '../security/device';
 import { formatCivilDate } from '../lib/validators';
 import { colors, fonts, radius, space } from '../theme';
 
@@ -28,8 +32,12 @@ export default function RequestCredit() {
   const [sendError, setSendError] = useState<{ msg: string; retryable: boolean } | null>(null);
   const seq = useRef(0);
 
+  const [showSchedule, setShowSchedule] = useState(false);
+
   const amount = normalizeAmountInput(raw);
   const valid = isValidAmount(amount);
+  // Ya no se asume cuota pareja: con "german" baja, y con "french" + comisiones la 1 es más alta.
+  const shape = quote?.installments.length ? scheduleShape(quote.installments) : null;
 
   // Cotizar es sin efectos: se recalcula al cambiar el monto (con debounce).
   useEffect(() => {
@@ -53,8 +61,10 @@ export default function RequestCredit() {
 
   const submit = async () => {
     if (!quote || quote.would_be_rejected) return;
-    setSending(true);
     setSendError(null);
+    const check = await confirmSensitiveAction(`Confirma que quieres recibir ${formatUsd(quote.principal_usd)}`);
+    if (!check.ok) return setSendError({ msg: check.message, retryable: false });
+    setSending(true);
     try {
       const fxConfirmation = quote.fx_rate_confirmation_required
         ? {
@@ -153,19 +163,61 @@ export default function RequestCredit() {
           ) : quote ? (
             <Card>
               <T variant="label" color={colors.textMuted}>
-                Pagarás
+                {shape?.kind === 'even' ? 'Pagarás' : 'Primera cuota'}
               </T>
               <T variant="amount" style={{ fontSize: 28 }}>
-                {quote.installments_count} × {formatUsd(quote.installments[0]?.total_amount_usd)}
+                {shape?.kind === 'even'
+                  ? `${quote.installments_count} × ${formatUsd(shape.amount)}`
+                  : formatUsd(quote.installments[0]?.total_amount_usd)}
               </T>
+              {shape && shapeHint(shape, quote.installments_count) ? (
+                <T variant="caption" color={colors.textMuted}>
+                  {shapeHint(shape, quote.installments_count)}
+                </T>
+              ) : null}
               <View style={{ height: 1, backgroundColor: colors.border, marginVertical: space.sm }} />
               <Row label="Recibes" value={formatUsd(quote.principal_usd)} />
+              <ChargeBreakdown
+                method={quote.amortization_method}
+                totalCharge={quote.total_charge_usd}
+                totalInterest={quote.total_interest_usd}
+                totalFees={quote.total_fees_usd}
+                fees={quote.fees}
+              />
               <Row label="Tasa BCV" value={`Bs. ${quote.usd_to_bs_rate}`} />
               {quote.installments[0] ? (
                 <Row label="Primera cuota" value={formatCivilDate(quote.installments[0].due_date)} />
               ) : null}
               <Row label="Total a pagar" value={formatUsd(quote.total_payable_usd)} strong />
               <Row label="Equivalente en Bs" value={formatBs(quote.total_payable_bs)} />
+              {quote.installments.length ? (
+                <Pressable
+                  onPress={() => setShowSchedule((v) => !v)}
+                  style={styles.scheduleToggle}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: showSchedule }}
+                >
+                  <T variant="label" color={colors.primary}>
+                    {showSchedule ? 'Ocultar cronograma' : `Ver cronograma (${quote.installments.length} cuotas)`}
+                  </T>
+                  <Ionicons name={showSchedule ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primary} />
+                </Pressable>
+              ) : null}
+              {showSchedule
+                ? quote.installments.map((i) => (
+                    <View key={i.sequence_number} style={styles.scheduleRow}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <T variant="label">
+                          Cuota {i.sequence_number} · {formatCivilDate(i.due_date)}
+                        </T>
+                        <T variant="label">{formatUsd(i.total_amount_usd)}</T>
+                      </View>
+                      <T variant="caption" color={colors.textMuted}>
+                        {installmentBreakdown(i)}
+                      </T>
+                    </View>
+                  ))
+                : null}
               {quote.fx_rate_is_stale ? (
                 <View style={{ marginTop: space.sm }}>
                   <Banner
@@ -267,6 +319,15 @@ const styles = StyleSheet.create({
     color: colors.text,
     padding: 0,
   },
+  scheduleToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.xs,
+    paddingTop: space.md,
+    paddingBottom: space.xs,
+  },
+  scheduleRow: { paddingVertical: space.sm, borderTopWidth: 1, borderTopColor: colors.border },
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: colors.primarySoft },
   overlay: {
     flex: 1,

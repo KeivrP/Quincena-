@@ -1,11 +1,13 @@
 import Big from 'big.js';
 import * as Crypto from 'expo-crypto';
-import type { ExtraCreditRequest, Loan, LoanDetail, LoanInstallment, Profile } from './types';
+import type { AmortizationMethod, ExtraCreditRequest, Loan, LoanDetail, LoanInstallment, Profile } from './types';
 
 // Servidor simulado en memoria para ver la app sin credenciales (EXPO_PUBLIC_USE_MOCK=1).
 // Reproduce los valores mágicos del banco simulado del backend:
 //   monto terminado en .14 → rechazo del banco (502) · .13 → en revisión (202) ·
 //   referencia SIMFAIL… → el banco no concilia el abono (422).
+// Método de amortización del producto: .21 → french (cuota fija + comisiones en la 1) ·
+//   .22 → german (cuota decreciente) · otro → flat_prorated (comisión prorrateada).
 // Extra-crédito: la solicitud queda «pendiente» unos segundos y luego RRHH (simulado) la resuelve:
 //   monto terminado en .14 → rechazada · .12 → aprobada por la mitad · otro → aprobada completa.
 // Formas calcadas de `src/disglobal/modules/*/schemas.py` del backend real.
@@ -59,26 +61,89 @@ const SAMPLE_PDF = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pd
 // servidor simulado tiene que devolver esa misma huella o la firma falla con «El documento cambió».
 const samplePdfSha256 = () => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, SAMPLE_PDF);
 
+/** Monto terminado en .21 → producto "french" con comisiones · .22 → "german" · otro → "flat_prorated". */
+function methodFor(principal: string): AmortizationMethod {
+  if (principal.endsWith('.21')) return 'french';
+  if (principal.endsWith('.22')) return 'german';
+  return 'flat_prorated';
+}
+
+const RATE_PER_INSTALLMENT = new Big('0.02');
+const PRODUCT_FEES = [
+  { name: 'Comisión bancaria', percent: '5.000' },
+  { name: 'Comisión flat', percent: '1.000' },
+];
+
+/** Capital + interés por cuota (sin comisiones). La última cuota absorbe el redondeo. */
+function amortize(a: Big, method: AmortizationMethod): { principal: Big; interest: Big }[] {
+  const n = INSTALLMENTS_COUNT;
+  if (method === 'flat_prorated') {
+    const p = a.div(n).round(2);
+    return Array.from({ length: n }, (_, i) => ({ principal: i === n - 1 ? a.minus(p.times(n - 1)) : p, interest: new Big(0) }));
+  }
+  const r = RATE_PER_INSTALLMENT;
+  const g = r.plus(1).pow(n);
+  const payment = a.times(r).times(g).div(g.minus(1)).round(2);
+  const fixedPrincipal = a.div(n).round(2);
+  let balance = a;
+  return Array.from({ length: n }, (_, i) => {
+    const interest = balance.times(r).round(2);
+    const principal =
+      i === n - 1 ? balance : method === 'french' ? payment.minus(interest) : fixedPrincipal;
+    balance = balance.minus(principal);
+    return { principal, interest };
+  });
+}
+
 function buildQuote(principal: string) {
   const a = new Big(principal || '0');
-  const total = a.times(1.08).round(2);
-  const perInstallment = total.div(INSTALLMENTS_COUNT).round(2);
+  const method = methodFor(a.toFixed(2));
   const available = new Big(state.limit).minus(used());
   const over = a.gt(available);
-  const installments = Array.from({ length: INSTALLMENTS_COUNT }, (_, i) => ({
-    sequence_number: i + 1,
-    due_date: addDays((i + 1) * 15),
-    period_key: `2026-Q${i + 1}`,
-    principal_component_usd: a.div(INSTALLMENTS_COUNT).round(2).toFixed(2),
-    interest_or_fee_component_usd: perInstallment.minus(a.div(INSTALLMENTS_COUNT).round(2)).toFixed(2),
-    total_amount_usd: perInstallment.toFixed(2),
-    total_amount_bs: perInstallment.times(RATE).toFixed(2),
-  }));
+  // flat_prorated: una sola comisión del 8 % repartida en todas las cuotas.
+  // french/german: comisiones concentradas en la cuota 1.
+  const fees =
+    method === 'flat_prorated'
+      ? [{ name: 'Comisión', percent: '8.000', amount_usd: a.times('0.08').round(2).toFixed(2) }]
+      : PRODUCT_FEES.map((f) => ({ ...f, amount_usd: a.times(f.percent).div(100).round(2).toFixed(2) }));
+  const totalFees = fees.reduce((s, f) => s.plus(f.amount_usd), new Big(0));
+  const proratedFee = totalFees.div(INSTALLMENTS_COUNT).round(2);
+  const rows = amortize(a, method);
+  const installments = rows.map((row, i) => {
+    const last = i === rows.length - 1;
+    const fee =
+      method === 'flat_prorated'
+        ? last
+          ? totalFees.minus(proratedFee.times(INSTALLMENTS_COUNT - 1))
+          : proratedFee
+        : i === 0
+          ? totalFees
+          : new Big(0);
+    const charge = row.interest.plus(fee);
+    const total = row.principal.plus(charge);
+    return {
+      sequence_number: i + 1,
+      due_date: addDays((i + 1) * 15),
+      period_key: `2026-Q${i + 1}`,
+      principal_component_usd: row.principal.toFixed(2),
+      interest_component_usd: row.interest.toFixed(2),
+      fee_component_usd: fee.toFixed(2),
+      interest_or_fee_component_usd: charge.toFixed(2),
+      total_amount_usd: total.toFixed(2),
+      total_amount_bs: total.times(RATE).toFixed(2),
+    };
+  });
+  const totalInterest = rows.reduce((s, r) => s.plus(r.interest), new Big(0));
+  const total = a.plus(totalInterest).plus(totalFees);
   return {
     principal_usd: a.toFixed(2),
     installments_count: INSTALLMENTS_COUNT,
     total_payable_usd: total.toFixed(2),
     total_charge_usd: total.minus(a).toFixed(2),
+    amortization_method: method,
+    total_interest_usd: totalInterest.toFixed(2),
+    total_fees_usd: totalFees.toFixed(2),
+    fees,
     fx_rate_date: new Date().toISOString().slice(0, 10),
     usd_to_bs_rate: RATE,
     total_payable_bs: total.times(RATE).toFixed(2),
@@ -103,6 +168,8 @@ function createLoan(q: Quote): LoanDetail {
     period_key: i.period_key,
     principal_component_usd: i.principal_component_usd,
     interest_or_fee_component_usd: i.interest_or_fee_component_usd,
+    interest_component_usd: i.interest_component_usd,
+    fee_component_usd: i.fee_component_usd,
     total_amount_usd: i.total_amount_usd,
     status: 'scheduled',
     paid_principal_usd: '0.00',
@@ -121,8 +188,13 @@ function createLoan(q: Quote): LoanDetail {
     principal_usd: q.principal_usd,
     installments_count: q.installments_count,
     total_payable_usd: q.total_payable_usd,
-    charge_model_snapshot: 'flat_fee',
-    rate_percent_snapshot: '8.000',
+    charge_model_snapshot: q.amortization_method === 'flat_prorated' ? 'flat_fee' : 'declining_interest',
+    amortization_method_snapshot: q.amortization_method,
+    rate_period_months_snapshot: q.amortization_method === 'flat_prorated' ? null : 1,
+    total_interest_usd: q.total_interest_usd,
+    total_fees_usd: q.total_fees_usd,
+    fees: q.fees.map((f) => ({ ...f, applied_on_installment: q.amortization_method === 'flat_prorated' ? null : 1 })),
+    rate_percent_snapshot: q.amortization_method === 'flat_prorated' ? '8.000' : '2.000',
     payment_frequency_snapshot: 'monthly',
     fx_rate_at_disbursement: RATE,
     fx_rate_date: q.fx_rate_date,
@@ -206,6 +278,20 @@ export async function mockRequest(
   };
 
   const route = `${method} ${path}`;
+  // Igual que el backend: con la contraseña temporal solo se puede leer el perfil.
+  if (path.startsWith('/app/') && state.mustChange && route !== 'GET /app/profile')
+    return json(
+      403,
+      {
+        type: 'https://disglobal.dev/errors/permission_denied',
+        title: 'Permiso denegado',
+        status: 403,
+        code: 'permission_denied',
+        detail: 'Antes de continuar tienes que cambiar tu contraseña temporal.',
+        extra: { reason: 'password_change_required' },
+      },
+      true,
+    );
   switch (true) {
     case route === 'POST /auth/login': {
       if (body.password !== state.password && body.password !== 'Demo1234')
@@ -271,7 +357,36 @@ export async function mockRequest(
         national_id: state.payout?.national_id ?? null,
         registered_at: state.payout ? new Date().toISOString() : null,
       });
-    case route === 'PUT /app/payout-account':
+    case route === 'PUT /app/payout-account': {
+      const p = state.payout;
+      const changed =
+        !!p && (p.bank_code !== body.bank_code || p.phone !== body.phone || p.national_id !== body.national_id);
+      // Cambiar una cuenta ya registrada pide la contraseña actual (como el backend).
+      if (changed && body.current_password !== state.password) {
+        const missing = !body.current_password;
+        return json(
+          422,
+          {
+            type: 'https://disglobal.dev/errors/validation_error',
+            title: 'Error de validación',
+            status: 422,
+            code: 'validation_error',
+            detail: 'Uno o más campos no son válidos.',
+            extra: {
+              errors: [
+                {
+                  loc: ['body', 'current_password'],
+                  msg: missing
+                    ? 'Para cambiar tus datos de cobro confirma tu contraseña actual.'
+                    : 'La contraseña actual no es correcta.',
+                  type: missing ? 'current_password_required' : 'invalid_current_password',
+                },
+              ],
+            },
+          },
+          true,
+        );
+      }
       state.payout = { bank_code: body.bank_code, phone: body.phone, national_id: body.national_id };
       return json(200, {
         registered: true,
@@ -280,6 +395,7 @@ export async function mockRequest(
         national_id: state.payout.national_id,
         registered_at: new Date().toISOString(),
       });
+    }
     case route === 'POST /app/loans/quote':
       return json(200, buildQuote(body.principal_usd));
     case route === 'POST /app/loans': {

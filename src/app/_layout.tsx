@@ -11,6 +11,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
+import { AppLock } from '../security/AppLock';
 import { colors } from '../theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -26,9 +27,12 @@ function RootStack() {
 
   if (!ready) return null;
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
-      <Stack.Screen name="result" options={{ gestureEnabled: false }} />
-    </Stack>
+    <>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+        <Stack.Screen name="result" options={{ gestureEnabled: false }} />
+      </Stack>
+      <AppLock />
+    </>
   );
 }
 

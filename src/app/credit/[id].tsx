@@ -6,9 +6,11 @@ import { ActivityIndicator, View } from 'react-native';
 import { messageFor } from '../../api/errors';
 import { appApi } from '../../api/endpoints';
 import type { LoanDetail } from '../../api/types';
+import { ChargeBreakdown } from '../../components/ChargeBreakdown';
 import { statusPill } from '../../components/CreditCard';
 import { Banner, Button, Card, OrangeHeader, Row, Screen, T } from '../../components/ui';
 import { toBig, formatUsd } from '../../lib/money';
+import { installmentBreakdown } from '../../lib/schedule';
 import { formatCivilDate } from '../../lib/validators';
 import { colors, space } from '../../theme';
 
@@ -74,6 +76,12 @@ export default function CreditDetailScreen() {
               <View style={{ height: 1, backgroundColor: colors.border, marginVertical: space.sm }} />
               <Row label="Monto recibido" value={formatUsd(credit.principal_usd)} />
               <Row label="Cuotas" value={`${credit.installments_count} · Total ${formatUsd(credit.total_payable_usd)}`} />
+              <ChargeBreakdown
+                method={credit.amortization_method_snapshot}
+                totalInterest={credit.total_interest_usd}
+                totalFees={credit.total_fees_usd}
+                fees={credit.fees}
+              />
               <Row label="Fecha" value={formatCivilDate(credit.requested_at)} />
             </Card>
 
@@ -124,6 +132,9 @@ export default function CreditDetailScreen() {
                       <T variant="label">Cuota {s.sequence_number}</T>
                       <T variant="caption" color={colors.textMuted}>
                         Vence {formatCivilDate(s.due_date)}
+                      </T>
+                      <T variant="caption" color={colors.textMuted}>
+                        {installmentBreakdown(s)}
                       </T>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
