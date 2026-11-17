@@ -1,4 +1,14 @@
-import { formatPercent, installmentBreakdown, METHOD_LABEL, scheduleShape, shapeHint } from '../schedule';
+import {
+  formatPercent,
+  installmentAlert,
+  installmentBreakdown,
+  loanOutstanding,
+  METHOD_LABEL,
+  methodLabel,
+  nextDue,
+  scheduleShape,
+  shapeHint,
+} from '../schedule';
 
 const inst = (total: string, extra: Partial<Record<string, string>> = {}) => ({
   total_amount_usd: total,
@@ -100,7 +110,54 @@ describe('formatPercent / METHOD_LABEL', () => {
     expect(formatPercent('5.000')).toBe('5 %');
     expect(formatPercent('1.250')).toBe('1,25 %');
   });
-  it('tiene etiqueta para los 3 métodos', () => {
-    expect(Object.keys(METHOD_LABEL).sort()).toEqual(['flat_prorated', 'french', 'german']);
+  it('tiene etiqueta para los 4 métodos, incluido flat_interest', () => {
+    expect(Object.keys(METHOD_LABEL).sort()).toEqual(['flat_interest', 'flat_prorated', 'french', 'german']);
+    expect(methodLabel('flat_interest')).toBe('Interés fijo prorrateado');
+  });
+  it('un método desconocido se muestra crudo', () => {
+    expect(methodLabel('balloon')).toBe('balloon');
+    expect(methodLabel(null)).toBeNull();
+  });
+});
+
+describe('deuda, próximo vencimiento y gracia (guía §9.2 y §11.5)', () => {
+  const cuota = (over: Record<string, unknown>) =>
+    ({
+      status: 'scheduled',
+      outstanding_usd: '10.00',
+      due_date: '2026-12-01',
+      in_mora_grace_period: false,
+      mora_grace_ends_on: null,
+      mora_accrued_usd: '0.00',
+      mora_paid_usd: '0.00',
+      ...over,
+    }) as never;
+
+  it('la deuda suma outstanding_usd de las cuotas no pagadas', () => {
+    expect(
+      loanOutstanding([
+        cuota({ status: 'paid', outstanding_usd: '0.00' }),
+        cuota({}),
+        cuota({ outstanding_usd: '5.50' }),
+      ]),
+    ).toBe('15.50');
+  });
+  it('el próximo vencimiento es la cuota abierta con menor fecha', () => {
+    const next = nextDue([cuota({ due_date: '2026-12-15' }), cuota({ status: 'overdue', due_date: '2026-11-15' })]);
+    expect((next as unknown as { due_date: string }).due_date).toBe('2026-11-15');
+  });
+  it('en gracia, en mora o solo vencida', () => {
+    expect(
+      installmentAlert(cuota({ status: 'overdue', in_mora_grace_period: true, mora_grace_ends_on: '2026-11-20' })),
+    ).toEqual({
+      kind: 'grace',
+      until: '2026-11-20',
+    });
+    expect(installmentAlert(cuota({ status: 'overdue', mora_accrued_usd: '1.20', mora_paid_usd: '0.20' }))).toEqual({
+      kind: 'mora',
+      mora: '1.00',
+    });
+    expect(installmentAlert(cuota({ status: 'overdue' }))).toEqual({ kind: 'overdue' });
+    expect(installmentAlert(cuota({}))).toBeNull();
   });
 });

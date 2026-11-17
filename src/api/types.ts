@@ -53,7 +53,43 @@ export interface Profile {
   credit_available_usd: Money;
   credit_agreement_signed: boolean;
   payout_registered: boolean;
+  /**
+   * Pago móvil DE LA EMPRESA (no necesariamente la cuenta receptora del gateway; guía §10.1 y §15
+   * A1). `null` si la empresa no tiene cuenta configurada: entonces no se ofrece reportar abonos.
+   */
   payment_destination: PaymentDestination | null;
+  /** Producto asignado al trabajador; `null` = no puede cotizar ni pedir crédito (guía §5.2). */
+  credit_product?: CreditProduct | null;
+}
+
+/** `GET /app/credit-products` (0 o 1 elemento) y `credit_product` del perfil (guía §7.1). */
+export interface CreditProduct {
+  id: string;
+  tenant_id: string;
+  name: string;
+  funding_source: string;
+  /** Obsoleto: usar `amortization_method`. */
+  charge_model?: string;
+  amortization_method: AmortizationMethod;
+  rate_percent: Money;
+  rate_period_months: number | null;
+  allowed_installments: number[];
+  min_amount_usd: Money;
+  max_amount_usd: Money;
+  /** Tasa ANUAL de mora. */
+  default_interest_percent: Money;
+  fees: { id?: string; name: string; percent: Money }[];
+  version?: number;
+  is_active?: boolean;
+}
+
+/** `GET /app/sessions`: un dispositivo con sesión abierta (guía §4.8). */
+export interface DeviceSession {
+  family_id: string;
+  ip: string | null;
+  user_agent: string | null;
+  last_seen_at: string;
+  is_current: boolean;
 }
 
 export interface CreditAgreement {
@@ -81,8 +117,11 @@ export interface PayoutAccount {
  * - `french`: cuota pareja; si hay comisiones, van todas en la cuota 1.
  * - `german`: capital fijo, el total de la cuota BAJA con el tiempo.
  * - `flat_prorated`: sin interés, la comisión prorrateada en todas las cuotas.
+ * - `flat_interest`: cuotas iguales; el cargo es INTERÉS total del préstamo (no anual), repartido en
+ *   partes iguales (`fee_component_usd` = 0).
+ * Se toleran valores nuevos: la UI muestra el texto crudo.
  */
-export type AmortizationMethod = 'french' | 'german' | 'flat_prorated';
+export type AmortizationMethod = 'french' | 'german' | 'flat_prorated' | 'flat_interest';
 
 /** Una comisión del producto; su suma es `total_fees_usd`. */
 export interface LoanFee {
@@ -155,6 +194,10 @@ export interface LoanInstallment {
   outstanding_usd: Money;
   overdue_since: string | null;
   paid_at: string | null;
+  /** Último día SIN mora de esta cuota; `null` si el préstamo no tiene gracia. Solo en el detalle. */
+  mora_grace_ends_on?: string | null;
+  /** La cuota ya venció pero todavía no genera mora. */
+  in_mora_grace_period?: boolean;
 }
 
 export interface Loan {
@@ -174,17 +217,20 @@ export interface Loan {
   disbursed_at: string | null;
   paid_off_at: string | null;
   created_at: string;
-}
-
-/** `GET /app/loans/{id}`: trae además las condiciones de nacimiento del préstamo (tanda 2026-11-08). */
-export interface LoanDetail extends Loan {
-  installments: LoanInstallment[];
-  receipt_download_url: string | null;
   /** `charge_model_snapshot` es ambiguo entre french/german; este es el que manda. */
   amortization_method_snapshot?: AmortizationMethod | null;
   rate_period_months_snapshot?: number | null;
   total_interest_usd?: Money;
   total_fees_usd?: Money;
+  /** Días de gracia de mora de ESTE crédito (0 = sin gracia), fijados al originarse. */
+  grace_period_days_snapshot?: number;
+}
+
+/** `GET /app/loans/{id}`: además trae el cronograma, las comisiones y el comprobante. */
+export interface LoanDetail extends Loan {
+  installments: LoanInstallment[];
+  /** `null` mientras el préstamo esté en revisión. */
+  receipt_download_url: string | null;
   fees?: LoanFee[];
 }
 
@@ -197,8 +243,7 @@ export interface LoanApplicationResult {
 /** Los 3 desenlaces posibles de `POST /app/loans`, unificados para la UI. */
 export type LoanRequestOutcome =
   | { status: 'disbursed'; loan: Loan; receipt_download_url: string }
-  | { status: 'rejected'; message: string }
-  | { status: 'in_review'; message: string };
+  | { status: 'in_review'; message: string; loanId?: string };
 
 /** Cómo se repartió ESE abono. Orden del backend: mora → interés/comisión → capital. */
 export interface PaymentApplied {
@@ -211,7 +256,10 @@ export interface PaymentTransaction {
   id: string;
   loan_id: string | null;
   amount_usd: Money;
+  /** La referencia que DECLARÓ el trabajador. */
   provider_reference: string;
+  /** Referencia canónica del banco para ese pago (puede diferir de la declarada, o venir null). */
+  bank_reference?: string | null;
   confirmed_at: string;
   applied: PaymentApplied;
 }

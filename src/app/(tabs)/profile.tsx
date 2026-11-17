@@ -41,7 +41,7 @@ export default function Profile() {
 
   const items: Item[] = [
     {
-      icon: 'phone-portrait-outline',
+      icon: 'card-outline',
       label: 'Datos de cobro',
       detail: acct?.registered ? `${acct.bank_code} · ${acct.phone}` : 'Sin registrar',
       onPress: () => router.push('/onboarding/payout'),
@@ -58,7 +58,13 @@ export default function Profile() {
       detail: 'Montos por encima de tu cupo',
       onPress: () => router.push('/extra-credit'),
     },
-    { icon: 'lock-closed-outline', label: 'Cambiar contraseña', onPress: () => router.push('/forgot-password') },
+    { icon: 'lock-closed-outline', label: 'Cambiar contraseña', onPress: () => router.push('/change-password') },
+    {
+      icon: 'phone-portrait-outline',
+      label: 'Dispositivos conectados',
+      detail: 'Dónde está abierta tu cuenta',
+      onPress: () => router.push('/sessions'),
+    },
     { icon: 'help-circle-outline', label: 'Ayuda', detail: 'Consulta con RRHH de tu empresa', onPress: () => {} },
     { icon: 'log-out-outline', label: 'Cerrar sesión', onPress: confirmLogout, danger: true },
   ];

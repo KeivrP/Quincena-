@@ -37,8 +37,15 @@ it('tras un error de red, reintentar lo mismo reusa la MISMA key (no duplica)', 
   expect(keysUsed[1]).toBe(keysUsed[0]);
 });
 
-it('tras un 5xx también conserva la key', async () => {
+it('tras un 5xx con cuerpo el intento terminó: clave nueva (guía §3.4)', async () => {
   await expect(withIdempotency('x', { a: 1 }, failWith(new ApiError(503, {})))).rejects.toThrow();
+  await withIdempotency('x', { a: 1 }, capture('ok'));
+  expect(keysUsed[1]).not.toBe(keysUsed[0]);
+});
+
+it('con in_progress se reusa la misma clave', async () => {
+  const busy = new ApiError(409, { code: 'idempotency_conflict', extra: { reason: 'in_progress' } });
+  await expect(withIdempotency('x', { a: 1 }, failWith(busy))).rejects.toThrow();
   await withIdempotency('x', { a: 1 }, capture('ok'));
   expect(keysUsed[1]).toBe(keysUsed[0]);
 });

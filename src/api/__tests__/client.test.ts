@@ -83,7 +83,12 @@ describe('errores', () => {
   it('convierte problem+json en ApiError con su reason', async () => {
     await login();
     fetchMock.mockResolvedValue(
-      res(422, { title: 'Regla', status: 422, code: 'business_rule_violation', extra: { reason: 'within_credit_limit' } }),
+      res(422, {
+        title: 'Regla',
+        status: 422,
+        code: 'business_rule_violation',
+        extra: { reason: 'within_credit_limit' },
+      }),
     );
     const err = await client.request('/app/x').then(noFail, asApiError);
     expect(err).toBeInstanceOf(ApiError);
@@ -113,7 +118,9 @@ describe('errores', () => {
     fetchMock.mockImplementation(
       (_url, init: RequestInit) =>
         new Promise((_resolve, reject) =>
-          init.signal!.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))),
+          init.signal!.addEventListener('abort', () =>
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+          ),
         ),
     );
     const err = await client.request('/app/x', { timeoutMs: 20 }).then(noFail, asApiError);
@@ -213,13 +220,65 @@ describe('sesión y refresh', () => {
   });
 });
 
-describe('requestWithStatus', () => {
-  it('expone el status 2xx para distinguir 200 de 202', async () => {
+describe('guía definitiva §3.3 y §4.7', () => {
+  it('un 2xx cuyo cuerpo trae `code` es un error (el 202 en revisión), con su loan_id', async () => {
     await login();
-    fetchMock.mockResolvedValue(res(202, { code: 'disbursement_pending_review', detail: 'En revisión' }));
-    await expect(client.requestWithStatus('/app/loans', { method: 'POST', body: {} })).resolves.toEqual({
-      status: 202,
-      data: { code: 'disbursement_pending_review', detail: 'En revisión' },
-    });
+    fetchMock.mockResolvedValue(
+      res(202, { code: 'disbursement_pending_review', detail: 'En revisión', extra: { loan_id: 'L1' } }),
+    );
+    const err = await client.request('/app/loans', { method: 'POST', body: {} }).then(noFail, asApiError);
+    expect(err.status).toBe(202);
+    expect(err.code).toBe('disbursement_pending_review');
+    expect(err.extra('loan_id')).toBe('L1');
+  });
+
+  it('401 session_revoked NO intenta refresh: va directo a Login', async () => {
+    await login();
+    const onExpired = jest.fn();
+    client.onSessionExpired(onExpired);
+    fetchMock.mockResolvedValue(res(401, { code: 'unauthorized', extra: { reason: 'session_revoked' } }));
+    await client.request('/app/profile').then(noFail, asApiError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(onExpired).toHaveBeenCalledWith('session_revoked');
+    expect(await tokens.loadSession()).toBeNull();
+  });
+
+  it('401 user_inactive cierra la sesión con ese motivo', async () => {
+    await login();
+    const onExpired = jest.fn();
+    client.onSessionExpired(onExpired);
+    fetchMock.mockResolvedValue(res(401, { code: 'unauthorized', extra: { reason: 'user_inactive' } }));
+    await client.request('/app/profile').then(noFail, asApiError);
+    expect(onExpired).toHaveBeenCalledWith('user_inactive');
+    expect(client.takeSessionEndReason()).toBe('user_inactive');
+    expect(client.takeSessionEndReason()).toBeNull();
+  });
+
+  it('403 password_change_required avisa para llevar a cambiar la contraseña', async () => {
+    await login();
+    const onMustChange = jest.fn();
+    client.onPasswordChangeRequired(onMustChange);
+    fetchMock.mockResolvedValue(res(403, { code: 'permission_denied', extra: { reason: 'password_change_required' } }));
+    const err = await client.request('/app/loans').then(noFail, asApiError);
+    expect(err.reason).toBe('password_change_required');
+    expect(onMustChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('403 sin reason en /app/* = no es trabajador: cierra la sesión', async () => {
+    await login();
+    const onExpired = jest.fn();
+    client.onSessionExpired(onExpired);
+    fetchMock.mockResolvedValue(res(403, { code: 'permission_denied', detail: 'Permiso denegado' }));
+    await client.request('/app/loans').then(noFail, asApiError);
+    expect(onExpired).toHaveBeenCalledWith('not_employee');
+  });
+
+  it('guarda el X-Request-Id del error', async () => {
+    await login();
+    const r = res(500, { code: 'internal_error' }) as Response & { headers: Headers };
+    (r as { headers: unknown }).headers = { get: (h: string) => (h === 'X-Request-Id' ? 'req-123' : null) };
+    fetchMock.mockResolvedValue(r);
+    const err = await client.request('/app/profile').then(noFail, asApiError);
+    expect(err.requestId).toBe('req-123');
   });
 });

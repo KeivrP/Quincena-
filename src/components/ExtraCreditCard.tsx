@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { Pressable, View } from 'react-native';
 import type { ExtraCreditRequest, ExtraCreditStatus } from '../api/types';
 import { formatUsd, toBig } from '../lib/money';
-import { formatCivilDate } from '../lib/validators';
+import { formatInstantDate } from '../lib/validators';
 import { colors, radius, shadow, space } from '../theme';
 import { Pill, T } from './ui';
 
@@ -71,7 +71,7 @@ export function ExtraCreditCard({ request: r }: { request: ExtraCreditRequest })
       <View style={{ flex: 1, marginLeft: space.sm }}>
         <T variant="h3">{formatUsd(r.requested_amount_usd)}</T>
         <T variant="caption" color={colors.textMuted}>
-          {subtitle} · {formatCivilDate(r.created_at)}
+          {subtitle} · {formatInstantDate(r.created_at)}
         </T>
       </View>
       {extraCreditPill(r.status)}

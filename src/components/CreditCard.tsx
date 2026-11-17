@@ -3,18 +3,19 @@ import { router } from 'expo-router';
 import { Pressable, View } from 'react-native';
 import type { Loan, LoanStatus } from '../api/types';
 import { formatUsd } from '../lib/money';
-import { formatCivilDate } from '../lib/validators';
+import { formatInstantDate } from '../lib/validators';
 import { colors, radius, shadow, space } from '../theme';
 import { Pill, T } from './ui';
 
 export function statusPill(status: LoanStatus | string) {
   switch (status) {
+    // Etiquetas de la guía §9.1; un estado nuevo del servidor se muestra crudo.
     case 'active':
-      return <Pill label="Activo" tone="brand" />;
+      return <Pill label="Vigente" tone="brand" />;
     case 'paid_off':
       return <Pill label="Pagado" tone="success" />;
     case 'disbursing':
-      return <Pill label="Procesando" tone="warning" />;
+      return <Pill label="En proceso" tone="warning" />;
     case 'disbursement_failed':
       return <Pill label="En revisión" tone="warning" />;
     case 'cancelled':
@@ -61,11 +62,11 @@ export function CreditCard({ credit }: { credit: Loan }) {
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: space.sm }}>
         <T variant="caption" color={colors.textMuted}>
-          Solicitado {formatCivilDate(credit.requested_at)}
+          Solicitado {formatInstantDate(credit.requested_at)}
         </T>
         {credit.disbursed_at ? (
           <T variant="caption" color={colors.textMuted}>
-            Desembolsado {formatCivilDate(credit.disbursed_at)}
+            Desembolsado {formatInstantDate(credit.disbursed_at)}
           </T>
         ) : null}
       </View>

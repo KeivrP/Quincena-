@@ -5,7 +5,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import { USE_MOCK } from '../../api/config';
-import { messageFor } from '../../api/errors';
+import { ApiError, messageFor } from '../../api/errors';
 import { appApi } from '../../api/endpoints';
 import type { CreditAgreement } from '../../api/types';
 import { useAuth } from '../../auth/AuthProvider';
@@ -34,10 +34,10 @@ export default function ContractScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setError(null);
     try {
       const c = await appApi.creditAgreement();
       setContract(c);
+      setError(null);
       return c;
     } catch (e) {
       setError(messageFor(e));
@@ -46,8 +46,19 @@ export default function ContractScreen() {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+    appApi
+      .creditAgreement()
+      .then((c) => {
+        if (!cancelled) setContract(c);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(messageFor(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const open = async () => {
     // Pedimos una URL fresca cada vez: las prefirmadas vencen en ~1 h.
@@ -71,6 +82,19 @@ export default function ContractScreen() {
       await refreshProfile();
       router.replace('/');
     } catch (e) {
+      // Los dos 409 (ya firmado / el documento cambió) llegan sin reason: se relee el contrato.
+      // Si ya está firmado se avanza; si no, hay que verlo de nuevo y firmar con clave nueva (§6.1).
+      if (e instanceof ApiError && e.status === 409) {
+        const now = await load();
+        if (now?.signed) {
+          await refreshProfile();
+          router.replace('/');
+          return;
+        }
+        setOpened(false);
+        setError('El contrato se actualizó. Ábrelo de nuevo antes de firmar.');
+        return;
+      }
       setError(e instanceof Error && !('problem' in e) ? e.message : messageFor(e));
     } finally {
       setLoading(false);

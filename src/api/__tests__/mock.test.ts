@@ -1,6 +1,6 @@
 import Big from 'big.js';
 import { scheduleShape } from '../../lib/schedule';
-import type { LoanDetail, LoanQuote } from '../types';
+import type { Loan, LoanDetail, LoanQuote } from '../types';
 
 let mockRequest: typeof import('../mock').mockRequest;
 
@@ -19,7 +19,8 @@ async function call(method: string, path: string, body?: unknown, headers: Recor
   return { status: r.status, body: text ? JSON.parse(text) : undefined };
 }
 
-const quote = async (amount: string) => (await call('POST', '/app/loans/quote', { principal_usd: amount })).body as LoanQuote;
+const quote = async (amount: string) =>
+  (await call('POST', '/app/loans/quote', { principal_usd: amount })).body as LoanQuote;
 // La cuenta arranca con contraseña temporal: hasta cambiarla, /app/* solo deja leer el perfil.
 const activate = async () => {
   await call('POST', '/auth/change-password', { current_password: 'Temporal123', new_password: 'Temporal123' });
@@ -111,7 +112,9 @@ describe('cupo', () => {
     expect(q.rejection_reason).toMatch(/\$600\.00/);
     const r = await call('POST', '/app/loans', { principal_usd: '700.00' });
     expect(r.status).toBe(422);
-    expect(r.body.code).toBe('credit_limit_exceeded');
+    // Cupo excedido: business_rule_violation SIN reason, con los montos en extra (guía §7.5).
+    expect(r.body.code).toBe('business_rule_violation');
+    expect(r.body.extra.requested_usd).toBe('700.00');
   });
 
   it('el crédito otorgado consume cupo', async () => {
@@ -137,7 +140,9 @@ describe('pedir crédito: desenlaces simulados', () => {
     expect(d.total_interest_usd).toBe(q.total_interest_usd);
     expect(d.total_fees_usd).toBe(q.total_fees_usd);
     expect(d.installments.map((i) => i.fee_component_usd)).toEqual(q.installments.map((i) => i.fee_component_usd));
-    expect(d.installments.every((i) => i.status === 'scheduled' && i.outstanding_usd === i.total_amount_usd)).toBe(true);
+    expect(d.installments.every((i) => i.status === 'scheduled' && i.outstanding_usd === i.total_amount_usd)).toBe(
+      true,
+    );
   });
 
   it('flat_prorated no indica cuota de cobro', async () => {
@@ -176,12 +181,15 @@ describe('pagos', () => {
   it('aplica interés/comisión antes que capital y cierra el préstamo al pagarlo todo', async () => {
     const { body } = await call('POST', '/app/loans', { principal_usd: '100.00' }); // 3 × 36.00
     const id = body.loan.id;
-    const pay = (amount: string, reference = 'R') =>
-      call('POST', `/app/loans/${id}/payments`, { amount_usd: amount, reference });
+    let n = 0;
+    // Cada referencia se usa una sola vez (guía §10.4).
+    const pay = (amount: string, reference = `R${++n}`) =>
+      call('POST', `/app/loans/${id}/payments`, { amount_usd: amount, reference, payer_bank_code: '0134' });
 
     const p1 = await pay('36.00');
     expect(p1.status).toBe(200);
     expect(p1.body.applied).toEqual({ principal_usd: '33.33', interest_or_fee_usd: '2.67', mora_usd: '0.00' });
+    expect(p1.body.bank_reference).toMatch(/^0012/);
     let d = (await call('GET', `/app/loans/${id}`)).body as LoanDetail;
     expect(d.installments.map((i) => i.status)).toEqual(['paid', 'scheduled', 'scheduled']);
 
@@ -198,10 +206,78 @@ describe('pagos', () => {
 
   it('referencia SIMFAIL → 422 y no aplica nada', async () => {
     const { body } = await call('POST', '/app/loans', { principal_usd: '100.00' });
-    const r = await call('POST', `/app/loans/${body.loan.id}/payments`, { amount_usd: '36.00', reference: 'simfail-1' });
-    expect(r).toMatchObject({ status: 422, body: { code: 'payment_not_validated' } });
+    const r = await call('POST', `/app/loans/${body.loan.id}/payments`, {
+      amount_usd: '36.00',
+      reference: 'simfail-1',
+    });
+    expect(r).toMatchObject({ status: 422, body: { code: 'business_rule_violation' } });
     const d = (await call('GET', `/app/loans/${body.loan.id}`)).body as LoanDetail;
     expect(d.installments[0].status).toBe('scheduled');
+  });
+
+  it('una referencia ya usada → 409 reference_already_used', async () => {
+    const { body } = await call('POST', '/app/loans', { principal_usd: '100.00' });
+    const pay = () =>
+      call('POST', `/app/loans/${body.loan.id}/payments`, {
+        amount_usd: '1.00',
+        reference: 'X9',
+        payer_bank_code: '0134',
+      });
+    expect((await pay()).status).toBe(200);
+    expect(await pay()).toMatchObject({ status: 409, body: { extra: { reason: 'reference_already_used' } } });
+  });
+
+  it('un abono mayor que la deuda → 422 con extra.outstanding_usd', async () => {
+    const { body } = await call('POST', '/app/loans', { principal_usd: '100.00' });
+    const r = await call('POST', `/app/loans/${body.loan.id}/payments`, {
+      amount_usd: '999.00',
+      reference: 'BIG',
+      payer_bank_code: '0134',
+    });
+    expect(r).toMatchObject({ status: 422, body: { extra: { outstanding_usd: '108.00' } } });
+  });
+});
+
+describe('guía definitiva: desembolso en revisión, gracia, sesiones y producto', () => {
+  beforeEach(activate);
+
+  it('202 en revisión trae extra.loan_id y bloquea otra solicitud con 409', async () => {
+    const r = await call('POST', '/app/loans', { principal_usd: '50.13' });
+    expect(r.status).toBe(202);
+    expect(r.body.code).toBe('disbursement_pending_review');
+    const loanId = r.body.extra.loan_id;
+    const d = (await call('GET', `/app/loans/${loanId}`)).body as LoanDetail;
+    expect(d.status).toBe('disbursement_failed');
+    expect(d.receipt_download_url).toBeNull();
+    const again = await call('POST', '/app/loans', { principal_usd: '20.00' });
+    expect(again).toMatchObject({ status: 409, body: { extra: { reason: 'disbursement_pending_review' } } });
+  });
+
+  it('monto .31: crédito con gracia y la cuota 1 vencida dentro de la gracia', async () => {
+    const { body } = await call('POST', '/app/loans', { principal_usd: '60.31' });
+    const d = (await call('GET', `/app/loans/${body.loan.id}`)).body as LoanDetail;
+    expect(d.grace_period_days_snapshot).toBe(3);
+    expect(d.installments[0]).toMatchObject({ status: 'overdue', in_mora_grace_period: true });
+    expect(d.installments[0].mora_grace_ends_on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // La lista trae el snapshot de gracia, pero no las cuotas.
+    const list = (await call('GET', '/app/loans')).body as Loan[];
+    expect(list[0].grace_period_days_snapshot).toBe(3);
+    expect((list[0] as unknown as { installments?: unknown }).installments).toBeUndefined();
+  });
+
+  it('dispositivos conectados y cerrar los demás', async () => {
+    const list = (await call('GET', '/app/sessions')).body as { is_current: boolean }[];
+    expect(list.filter((x) => x.is_current)).toHaveLength(1);
+    expect(list.length).toBeGreaterThan(1);
+    expect((await call('POST', '/app/sessions/revoke-others')).body).toEqual({ revoked_count: 1 });
+    expect(((await call('GET', '/app/sessions')).body as unknown[]).length).toBe(1);
+  });
+
+  it('el perfil trae el producto asignado y credit-products devuelve 0 o 1', async () => {
+    const pf = (await call('GET', '/app/profile')).body;
+    expect(pf.credit_product).toMatchObject({ min_amount_usd: '20.00', max_amount_usd: '500.00' });
+    const products = (await call('GET', '/app/credit-products')).body as unknown[];
+    expect(products.length).toBeLessThanOrEqual(1);
   });
 });
 
@@ -278,7 +354,9 @@ describe('auth y onboarding', () => {
 
   it('reset: código incorrecto → 422', async () => {
     const r = await call('POST', '/auth/password-reset/confirm', { code: '000000', new_password: 'x' });
-    expect(r.body.code).toBe('invalid_or_expired_code');
+    // 422 validation_error con el error en el campo `code` (guía §4.6).
+    expect(r.body.code).toBe('validation_error');
+    expect(r.body.extra.errors[0]).toMatchObject({ loc: ['body', 'code'], type: 'invalid_or_expired_code' });
   });
 
   it('firmar el contrato y registrar la cuenta de pago', async () => {
@@ -325,7 +403,10 @@ describe('seguridad: igual que el backend', () => {
 
     let r = await call('PUT', '/app/payout-account', next);
     expect(r.status).toBe(422);
-    expect(r.body.extra.errors[0]).toMatchObject({ loc: ['body', 'current_password'], type: 'current_password_required' });
+    expect(r.body.extra.errors[0]).toMatchObject({
+      loc: ['body', 'current_password'],
+      type: 'current_password_required',
+    });
 
     r = await call('PUT', '/app/payout-account', { ...next, current_password: 'mala' });
     expect(r.body.extra.errors[0].type).toBe('invalid_current_password');

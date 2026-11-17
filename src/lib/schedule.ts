@@ -1,16 +1,25 @@
-import type { AmortizationMethod, LoanQuoteInstallment } from '../api/types';
+import type { AmortizationMethod, LoanInstallment, LoanQuoteInstallment } from '../api/types';
 import { formatUsd, toBig, type Money } from './money';
 
 type Inst = Pick<
   LoanQuoteInstallment,
-  'total_amount_usd' | 'principal_component_usd' | 'interest_or_fee_component_usd' | 'interest_component_usd' | 'fee_component_usd'
+  | 'total_amount_usd'
+  | 'principal_component_usd'
+  | 'interest_or_fee_component_usd'
+  | 'interest_component_usd'
+  | 'fee_component_usd'
 >;
 
 export const METHOD_LABEL: Record<AmortizationMethod, string> = {
   french: 'Cuota fija',
   german: 'Cuota decreciente',
   flat_prorated: 'Comisión prorrateada',
+  flat_interest: 'Interés fijo prorrateado',
 };
+
+/** Etiqueta del método; si el servidor manda uno nuevo, el texto crudo (guía §3.2). */
+export const methodLabel = (m: string | null | undefined): string | null =>
+  m ? (METHOD_LABEL[m as AmortizationMethod] ?? m) : null;
 
 /**
  * Cómo se ve el cronograma, a partir de los montos (no del método: con `french` + comisiones la
@@ -71,6 +80,44 @@ export function installmentBreakdown(i: Inst): string {
     parts.push(`Interés/comisión ${formatUsd(i.interest_or_fee_component_usd)}`);
   }
   return parts.join(' · ');
+}
+
+type OwedInst = Pick<LoanInstallment, 'status' | 'outstanding_usd' | 'due_date'>;
+
+/**
+ * Deuda total de un préstamo = suma de `outstanding_usd` de sus cuotas no pagadas (incluye la mora
+ * devengada). Es también el máximo de un abono (guía §9.2).
+ */
+export function loanOutstanding(xs: OwedInst[]): Money {
+  return xs
+    .filter((i) => i.status !== 'paid' && i.status !== 'cancelled')
+    .reduce((acc, i) => acc.plus(toBig(i.outstanding_usd)), toBig('0'))
+    .toFixed(2);
+}
+
+/** Próximo vencimiento: la cuota `scheduled` u `overdue` con menor `due_date` (guía §9.2). */
+export function nextDue<T extends OwedInst>(xs: T[]): T | null {
+  const open = xs.filter((i) => i.status === 'scheduled' || i.status === 'overdue');
+  return open.sort((a, b) => a.due_date.localeCompare(b.due_date))[0] ?? null;
+}
+
+export type InstallmentAlert =
+  { kind: 'grace'; until: string } | { kind: 'mora'; mora: Money } | { kind: 'overdue' } | null;
+
+/**
+ * Cómo presentar una cuota (guía §9.2 y §11.5): en gracia (venció pero aún no genera mora), en mora
+ * o vencida. La gracia perdona el recargo, no el estado: igual bloquea pedir créditos nuevos.
+ */
+export function installmentAlert(
+  i: Pick<
+    LoanInstallment,
+    'status' | 'in_mora_grace_period' | 'mora_grace_ends_on' | 'mora_accrued_usd' | 'mora_paid_usd'
+  >,
+): InstallmentAlert {
+  if (i.in_mora_grace_period && i.mora_grace_ends_on) return { kind: 'grace', until: i.mora_grace_ends_on };
+  if (i.status !== 'overdue') return null;
+  const mora = toBig(i.mora_accrued_usd).minus(toBig(i.mora_paid_usd));
+  return mora.gt(0) ? { kind: 'mora', mora: mora.toFixed(2) } : { kind: 'overdue' };
 }
 
 /** "5 %" a partir de "5.000". */

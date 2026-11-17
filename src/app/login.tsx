@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError, messageFor } from '../api/errors';
+import { takeSessionEndReason } from '../api/client';
 import { USE_MOCK } from '../api/config';
 import { useAuth } from '../auth/AuthProvider';
 import { Banner, Button, Field, T, Wordmark } from '../components/ui';
@@ -14,7 +15,11 @@ export default function Login() {
   const [email, setEmail] = useState(USE_MOCK ? 'maria.perez@demo.com' : '');
   const [password, setPassword] = useState(USE_MOCK ? 'Temporal123' : '');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<{ msg: string; reason?: string } | null>(null);
+  // Si la sesión se cerró sola (cuenta desactivada, sesión revocada…), se dice por qué (guía §4.7).
+  const [error, setError] = useState<{ msg: string; reason?: string } | null>(() => {
+    const reason = takeSessionEndReason();
+    return reason ? { msg: messageFor(new ApiError(401, { extra: { reason } })), reason } : null;
+  });
 
   const submit = async () => {
     if (!isValidEmail(email)) return setError({ msg: 'Escribe un correo válido.' });

@@ -64,7 +64,11 @@ export default function Home() {
   const firstName = profile?.full_name?.split(' ')[0] ?? '';
   const usedPct = ratio(profile?.credit_used_usd, profile?.credit_limit_usd);
   const active = loans.filter((l) => l.status === 'active');
+  // "En revisión": el banco no confirmó el desembolso; consume cupo pero NO es deuda exigible (§9.1).
+  const inReview = loans.filter((l) => l.status === 'disbursement_failed' || l.status === 'disbursing');
   const pay = profile?.payment_destination;
+  const noProduct = profile ? profile.credit_product === null : false;
+  const actions = ACTIONS.filter((a) => a.to !== '/report-payment' || !!pay);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -134,7 +138,7 @@ export default function Home() {
           ) : null}
 
           <View style={styles.actions}>
-            {ACTIONS.map((a) => (
+            {actions.map((a) => (
               <Pressable key={a.label} style={styles.action} onPress={() => router.push(a.to)}>
                 <View style={styles.actionIcon}>
                   <Ionicons name={a.icon} size={22} color={colors.primary} />
@@ -145,6 +149,25 @@ export default function Home() {
               </Pressable>
             ))}
           </View>
+
+          {/* Avisos derivados del estado: no hay notificaciones push (guía §12). */}
+          {inReview.length ? (
+            <View style={{ marginTop: space.md }}>
+              <Banner
+                tone="warning"
+                title="Crédito en revisión"
+                message="El banco no confirmó a tiempo uno de tus desembolsos. Un administrador lo está revisando; mientras tanto no podrás pedir otro crédito."
+              />
+            </View>
+          ) : null}
+          {noProduct ? (
+            <View style={{ marginTop: space.md }}>
+              <Banner
+                tone="info"
+                message="Todavía no tienes un producto de crédito asignado. Contacta a RRHH de tu empresa."
+              />
+            </View>
+          ) : null}
 
           {extra ? (
             <>
@@ -166,8 +189,8 @@ export default function Home() {
               </T>
             ) : null}
           </View>
-          {active.length ? (
-            active.slice(0, 3).map((c) => <CreditCard key={c.id} credit={c} />)
+          {active.length || inReview.length ? (
+            [...inReview, ...active].slice(0, 3).map((c) => <CreditCard key={c.id} credit={c} />)
           ) : (
             <Card>
               <EmptyState

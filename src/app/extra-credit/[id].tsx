@@ -7,7 +7,7 @@ import type { ExtraCreditRequest } from '../../api/types';
 import { approvedForLess, extraCreditPill } from '../../components/ExtraCreditCard';
 import { Banner, Button, Card, OrangeHeader, Row, Screen, T } from '../../components/ui';
 import { formatUsd, toBig } from '../../lib/money';
-import { formatCivilDate } from '../../lib/validators';
+import { formatInstantDate } from '../../lib/validators';
 import { colors, space } from '../../theme';
 
 export default function ExtraCreditDetail() {
@@ -88,7 +88,7 @@ export default function ExtraCreditDetail() {
               <Row label="Tu cupo al pedirlo" value={formatUsd(req.snapshot_credit_limit_usd)} />
               <Row label="Deuda al pedirlo" value={formatUsd(req.snapshot_outstanding_principal_usd)} />
               {toBig(excess).gt(0) ? <Row label="Por encima del cupo" value={formatUsd(excess)} /> : null}
-              <Row label="Fecha" value={formatCivilDate(req.created_at)} />
+              <Row label="Fecha" value={formatInstantDate(req.created_at)} />
               {req.employee_note ? (
                 <View style={{ marginTop: space.sm }}>
                   <T variant="caption" color={colors.textMuted}>
@@ -132,7 +132,7 @@ export default function ExtraCreditDetail() {
 
             {req.resolved_at && req.status !== 'cancelled' ? (
               <T variant="caption" color={colors.textMuted} style={{ textAlign: 'center', marginTop: space.sm }}>
-                Resuelta el {formatCivilDate(req.resolved_at)}
+                Resuelta el {formatInstantDate(req.resolved_at)}
                 {req.resolved_by ? ` por ${req.resolved_by.full_name}` : ''}
               </T>
             ) : null}

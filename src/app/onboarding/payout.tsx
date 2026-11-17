@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { ApiError, messageFor } from '../../api/errors';
+import { fieldMessage, messageFor } from '../../api/errors';
 import { appApi } from '../../api/endpoints';
 import type { Bank } from '../../api/types';
 import { useAuth } from '../../auth/AuthProvider';
@@ -21,9 +21,11 @@ export default function Payout() {
   const [phone, setPhone] = useState('');
   const [cedula, setCedula] = useState(profile?.national_id ?? '');
   const [currentPassword, setCurrentPassword] = useState('');
-  const [errors, setErrors] = useState<Record<string, string | null>>({});
+  const [errors, setErrors] = useState<Record<string, string | null | undefined>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Lo ya registrado: si se reenvían los mismos datos, el servidor no pide contraseña (§6.3).
+  const [saved, setSaved] = useState<{ bank_code: string; phone: string; national_id: string } | null>(null);
 
   const loadCurrent = useCallback(async (list: Bank[]) => {
     try {
@@ -31,6 +33,8 @@ export default function Payout() {
       if (current.phone) setPhone(current.phone);
       if (current.national_id) setCedula(current.national_id);
       if (current.bank_code) setBank(list.find((x) => x.code === current.bank_code) ?? null);
+      if (current.registered && current.bank_code && current.phone && current.national_id)
+        setSaved({ bank_code: current.bank_code, phone: current.phone, national_id: current.national_id });
     } catch {
       // Sin cuenta registrada aún: formulario vacío, no es un error.
     }
@@ -47,7 +51,7 @@ export default function Payout() {
   }, [loadCurrent]);
 
   const submit = async () => {
-    const errs: Record<string, string | null> = {
+    const errs: Record<string, string | null | undefined> = {
       bank: bank ? null : 'Selecciona un banco.',
       phone: isValidPhone(phone) ? null : 'Debe ser un móvil venezolano (0412, 0414, 0416, 0424, 0426).',
       cedula: isValidCedula(cedula) ? null : 'Formato: V12345678.',
@@ -56,11 +60,20 @@ export default function Payout() {
       errs.cedula = 'Debe ser tu propia cédula.';
     }
     // Cambiar a dónde llegan los créditos es la operación que un ladrón de sesión querría hacer:
-    // el servidor pide la contraseña actual y aquí además la biometría/PIN del teléfono.
-    if (editing && !currentPassword) errs.currentPassword = 'Escribe tu contraseña actual.';
+    // el servidor pide la contraseña actual (solo en un cambio REAL) y aquí además la biometría/PIN.
+    const changed =
+      !!saved &&
+      (saved.bank_code !== bank?.code ||
+        normalizePhone(saved.phone) !== normalizePhone(phone) ||
+        normalizeCedula(saved.national_id) !== normalizeCedula(cedula));
+    if (editing && changed && !currentPassword) errs.currentPassword = 'Escribe tu contraseña actual.';
     setErrors(errs);
     if (Object.values(errs).some(Boolean)) return;
     setError(null);
+    if (editing && !changed) {
+      router.replace('/profile');
+      return;
+    }
     if (editing) {
       const check = await confirmSensitiveAction('Confirma el cambio de tus datos de cobro');
       if (!check.ok) return setError(check.message);
@@ -77,8 +90,17 @@ export default function Payout() {
       await refreshProfile();
       router.replace(editing ? '/profile' : '/');
     } catch (e) {
-      const field = e instanceof ApiError ? e.fieldError('current_password') : undefined;
-      if (field) setErrors((prev) => ({ ...prev, currentPassword: field.msg }));
+      // Errores por campo del servidor (§6.3); la cédula ajena llega como business_rule_violation.
+      const fields = {
+        bank: fieldMessage(e, 'bank_code'),
+        phone: fieldMessage(e, 'phone'),
+        cedula: fieldMessage(e, 'national_id'),
+        currentPassword: fieldMessage(e, 'current_password', {
+          current_password_required: 'Escribe tu contraseña actual.',
+          invalid_current_password: 'La contraseña no es correcta.',
+        }),
+      };
+      if (Object.values(fields).some(Boolean)) setErrors((prev) => ({ ...prev, ...fields }));
       else setError(messageFor(e));
     } finally {
       setLoading(false);
@@ -114,8 +136,10 @@ export default function Payout() {
             autoCapitalize="characters"
             value={cedula}
             onChangeText={setCedula}
+            // Debe ser la cédula que cargó RRHH: se precarga del perfil y no se edita (§6.3).
+            editable={!profile?.national_id}
             error={errors.cedula}
-            hint="Debe ser la tuya: el banco valida que coincida."
+            hint="Es tu cédula registrada: el pago móvil tiene que estar a tu nombre."
           />
           {editing ? (
             <Field
@@ -127,8 +151,16 @@ export default function Payout() {
               value={currentPassword}
               onChangeText={setCurrentPassword}
               error={errors.currentPassword}
-              hint="Por seguridad, cambiar a dónde recibes tu dinero requiere tu contraseña. Te avisaremos por correo."
+              hint="Solo si cambias algún dato. Te avisaremos por correo."
             />
+          ) : null}
+          {editing ? (
+            <View style={{ marginBottom: space.md }}>
+              <Banner
+                tone="warning"
+                message="Por seguridad, después de un cambio no podrás recibir un desembolso en esta cuenta durante las próximas 24 horas."
+              />
+            </View>
           ) : null}
           <Button title={editing ? 'Guardar cambios' : 'Guardar y empezar'} onPress={submit} loading={loading} />
         </Card>

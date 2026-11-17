@@ -6,6 +6,9 @@ import {
   normalizeCedula,
   normalizePhone,
   passwordIssues,
+  todayInCaracas,
+  formatInstantDate,
+  formatInstantDateTime,
 } from '../validators';
 
 describe('teléfono', () => {
@@ -55,5 +58,28 @@ describe('formatCivilDate', () => {
   it('devuelve un guion si no hay fecha', () => {
     expect(formatCivilDate(null)).toBe('—');
     expect(formatCivilDate('')).toBe('—');
+  });
+});
+
+describe('guía definitiva §4.5 y §3.2', () => {
+  it('la contraseña no puede tener espacios en los extremos ni pasar de 128', () => {
+    expect(passwordIssues(' Temporal123')).toContain('Sin espacios al inicio ni al final');
+    expect(passwordIssues('Temporal123 ')).toContain('Sin espacios al inicio ni al final');
+    expect(passwordIssues(`A1${'a'.repeat(127)}`)).toContain('Máximo 128 caracteres');
+  });
+  it('acepta los prefijos V E J G P C y de 6 a 10 dígitos', () => {
+    expect(isValidCedula('G-20000000-1')).toBe(true);
+    expect(isValidCedula('P1234567')).toBe(true);
+    expect(isValidCedula('C1234567890')).toBe(true);
+    expect(isValidCedula('V12345678901')).toBe(false);
+  });
+  it('hoy en Caracas (UTC−4): a las 2 a. m. UTC todavía es el día anterior', () => {
+    expect(todayInCaracas(new Date('2026-11-17T02:00:00Z'))).toBe('2026-11-16');
+    expect(todayInCaracas(new Date('2026-11-17T05:00:00Z'))).toBe('2026-11-17');
+  });
+  it('los instantes *_at se muestran en hora de Caracas', () => {
+    expect(formatInstantDate('2026-11-17T02:30:00Z')).toBe('16/11/2026');
+    expect(formatInstantDateTime('2026-11-17T02:30:00Z')).toBe('16/11/2026 10:30 p. m.');
+    expect(formatInstantDate(null)).toBe('—');
   });
 });

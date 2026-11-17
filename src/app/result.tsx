@@ -34,7 +34,7 @@ const CONTENT = {
     soft: colors.warningSoft,
     badges: [{ icon: 'business', color: colors.primary }],
     title: 'Tu crédito está en revisión',
-    text: 'El banco aún no confirma el envío. Te avisaremos apenas se resuelva; no lo pidas de nuevo.',
+    text: 'El banco no confirmó a tiempo si el dinero salió. Un administrador lo revisará en breve; no lo pidas de nuevo. Mientras tanto no podrás pedir otro crédito.',
   },
 } as const;
 
@@ -67,6 +67,16 @@ export default function Result() {
         </T>
       </View>
       <View style={{ padding: space.lg, gap: space.sm }}>
+        {key === 'rejected' ? (
+          <>
+            <Button title="Reintentar" variant="outline" onPress={() => router.replace('/request')} />
+            <Button
+              title="Revisar datos de cobro"
+              variant="ghost"
+              onPress={() => router.replace('/onboarding/payout')}
+            />
+          </>
+        ) : null}
         {p.id && key !== 'rejected' ? (
           <Button
             title="Ver detalle"

@@ -29,9 +29,10 @@ export async function withIdempotency<T>(
     await secureStorage.remove(storageKey(intent));
     return result;
   } catch (e) {
-    // Error definitivo (4xx): el intento terminó, la próxima vez es uno nuevo.
-    // Error de red / timeout / 5xx: conservamos la key para reintentar sin duplicar.
-    if (!(e instanceof ApiError) || !e.retryable) await secureStorage.remove(storageKey(intent));
+    // Guía §3.4: sin respuesta (red/timeout) o `in_progress` → la MISMA key en el reintento.
+    // Respuesta de error con cuerpo (4xx, 502, 503…) → el intento terminó: el siguiente va con
+    // clave nueva (un 5xx deja la clave bloqueada ~30 s en el servidor, así que también conviene).
+    if (!(e instanceof ApiError) || !e.keepsIdempotencyKey) await secureStorage.remove(storageKey(intent));
     throw e;
   }
 }

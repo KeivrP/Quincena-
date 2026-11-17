@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { onSessionExpired } from '../api/client';
+import { router } from 'expo-router';
+import { onPasswordChangeRequired, onSessionExpired } from '../api/client';
 import { authApi, appApi } from '../api/endpoints';
+import { ApiError } from '../api/errors';
 import { clearSession, loadSession, saveSession } from '../api/tokens';
 import type { Profile } from '../api/types';
 import { secureStorage } from '../lib/storage';
@@ -20,6 +22,16 @@ interface AuthState {
 const MUST_CHANGE_KEY = 'xc.mustChange';
 const Ctx = createContext<AuthState | null>(null);
 
+/** Error de login para una cuenta que no es de trabajador (guía §4.1: "Solo para trabajadores"). */
+export const notEmployeeError = () =>
+  new ApiError(403, {
+    title: 'Solo para trabajadores',
+    status: 403,
+    code: 'permission_denied',
+    detail: 'Esta app es solo para trabajadores.',
+    extra: { reason: 'not_employee' },
+  });
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>('loading');
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -31,12 +43,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return p;
   }, []);
 
+  const setMust = useCallback(async (must: boolean) => {
+    await secureStorage.set(MUST_CHANGE_KEY, must ? '1' : '0');
+    setMustChange(must);
+  }, []);
+
+  // Arranque (guía §5.1): tokens → /auth/me (rol y must_change_password) → /app/profile.
   useEffect(() => {
     (async () => {
       const s = await loadSession();
       if (!s) return setStatus('signedOut');
       setMustChange((await secureStorage.get(MUST_CHANGE_KEY)) === '1');
       try {
+        const me = await authApi.me();
+        if (me.role !== 'employee') {
+          await clearSession();
+          return setStatus('signedOut');
+        }
+        await setMust(me.must_change_password);
         await refreshProfile();
         setStatus('signedIn');
       } catch {
@@ -44,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStatus((await loadSession()) ? 'signedIn' : 'signedOut');
       }
     })();
-  }, [refreshProfile]);
+  }, [refreshProfile, setMust]);
 
   useEffect(
     () =>
@@ -55,19 +79,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // Red de seguridad: el servidor exige cambiar la contraseña temporal (403 password_change_required).
+  useEffect(
+    () =>
+      onPasswordChangeRequired(() => {
+        setMust(true).then(() => router.replace('/onboarding/change-password'));
+      }),
+    [setMust],
+  );
+
   const signIn = useCallback(
     async (email: string, password: string) => {
       const pair = await authApi.login(email.trim().toLowerCase(), password);
       await saveSession(pair);
-      // El login NO trae must_change_password; sale de /auth/me (CurrentUser).
+      // El login NO trae must_change_password ni el rol: salen de /auth/me (guía §4.1).
       const me = await authApi.me();
-      const must = me.must_change_password;
-      await secureStorage.set(MUST_CHANGE_KEY, must ? '1' : '0');
-      setMustChange(must);
+      if (me.role !== 'employee') {
+        try {
+          await authApi.logout(pair.refresh_token ?? '');
+        } catch {
+          // igual se cierra localmente
+        }
+        await clearSession();
+        throw notEmployeeError();
+      }
+      await setMust(me.must_change_password);
       await refreshProfile();
       setStatus('signedIn');
     },
-    [refreshProfile],
+    [refreshProfile, setMust],
   );
 
   const signOut = useCallback(async () => {
@@ -75,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (s) await authApi.logout(s.refreshToken);
     } catch {
-      // Cerramos localmente aunque el servidor no responda.
+      // Cerramos localmente aunque el servidor no responda (guía §4.3).
     }
     await clearSession();
     await secureStorage.remove(MUST_CHANGE_KEY);
@@ -84,10 +124,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const passwordChanged = useCallback(async () => {
-    await secureStorage.set(MUST_CHANGE_KEY, '0');
-    setMustChange(false);
+    await setMust(false);
     await refreshProfile();
-  }, [refreshProfile]);
+  }, [refreshProfile, setMust]);
 
   const value = useMemo(
     () => ({ status, profile, mustChangePassword, signIn, signOut, refreshProfile, passwordChanged }),

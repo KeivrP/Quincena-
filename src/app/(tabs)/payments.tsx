@@ -7,7 +7,7 @@ import { appApi } from '../../api/endpoints';
 import type { LoanInstallment } from '../../api/types';
 import { Banner, Card, EmptyState, OrangeHeader, Pill, T } from '../../components/ui';
 import { formatUsd, toBig } from '../../lib/money';
-import { formatCivilDate } from '../../lib/validators';
+import { formatInstantDate } from '../../lib/validators';
 import { colors, space } from '../../theme';
 
 type PaidInstallment = LoanInstallment & { loanId: string };
@@ -81,9 +81,11 @@ export default function Payments() {
         renderItem={({ item }) => (
           <Card style={{ marginBottom: space.sm, flexDirection: 'row', alignItems: 'center' }}>
             <View style={{ flex: 1 }}>
-              <T variant="h3">{formatUsd(toBig(item.paid_principal_usd).plus(item.paid_fee_interest_usd).toFixed(2))}</T>
+              <T variant="h3">
+                {formatUsd(toBig(item.paid_principal_usd).plus(item.paid_fee_interest_usd).toFixed(2))}
+              </T>
               <T variant="caption" color={colors.textMuted}>
-                Cuota {item.sequence_number} · {item.paid_at ? formatCivilDate(item.paid_at) : '—'}
+                Cuota {item.sequence_number} · {item.paid_at ? formatInstantDate(item.paid_at) : '—'}
               </T>
             </View>
             <Pill label="Aplicado" tone="success" />

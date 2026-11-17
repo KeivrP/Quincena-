@@ -10,6 +10,10 @@ import type { AmortizationMethod, ExtraCreditRequest, Loan, LoanDetail, LoanInst
 //   .22 → german (cuota decreciente) · otro → flat_prorated (comisión prorrateada).
 // Extra-crédito: la solicitud queda «pendiente» unos segundos y luego RRHH (simulado) la resuelve:
 //   monto terminado en .14 → rechazada · .12 → aprobada por la mitad · otro → aprobada completa.
+// Gracia de mora: monto terminado en .31 → crédito con 3 días de gracia y la cuota 1 ya vencida,
+//   todavía dentro de la gracia (chip "En gracia hasta…").
+// Abonos (guía §10): cada referencia por banco se usa una sola vez (409 reference_already_used);
+//   un monto mayor a la deuda da 422 con extra.outstanding_usd.
 // Formas calcadas de `src/disglobal/modules/*/schemas.py` del backend real.
 
 const RATE = '38.50';
@@ -24,7 +28,11 @@ const state = {
   loans: [] as LoanDetail[],
   extraCredits: [] as ExtraCreditRequest[],
   seenKeys: new Map<string, { status: number; body: unknown }>(),
+  usedReferences: new Set<string>(),
+  otherSessions: 1,
 };
+
+const GRACE_DAYS = 3;
 
 function json(status: number, body: unknown, problem = false): Response {
   return new Response(body === undefined ? null : JSON.stringify(body), {
@@ -33,8 +41,27 @@ function json(status: number, body: unknown, problem = false): Response {
   });
 }
 
-const problem = (status: number, title: string, detail: string, code: string) =>
-  json(status, { type: `https://disglobal.dev/errors/${code}`, title, status, code, detail }, true);
+const problem = (status: number, title: string, detail: string, code: string, extra?: Record<string, unknown>) =>
+  json(
+    status,
+    { type: `https://disglobal.dev/errors/${code}`, title, status, code, detail, ...(extra ? { extra } : {}) },
+    true,
+  );
+
+/** 422 validation_error con un error de campo, como los arma el backend. */
+const fieldProblem = (field: string, type: string, msg: string) =>
+  json(
+    422,
+    {
+      type: 'https://disglobal.dev/errors/validation_error',
+      title: 'Error de validación',
+      status: 422,
+      code: 'validation_error',
+      detail: 'Uno o más campos no son válidos.',
+      extra: { errors: [{ loc: ['body', field], msg, type }] },
+    },
+    true,
+  );
 
 function fakeJwt(): string {
   const payload = globalThis.btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 15 * 60 }));
@@ -79,7 +106,10 @@ function amortize(a: Big, method: AmortizationMethod): { principal: Big; interes
   const n = INSTALLMENTS_COUNT;
   if (method === 'flat_prorated') {
     const p = a.div(n).round(2);
-    return Array.from({ length: n }, (_, i) => ({ principal: i === n - 1 ? a.minus(p.times(n - 1)) : p, interest: new Big(0) }));
+    return Array.from({ length: n }, (_, i) => ({
+      principal: i === n - 1 ? a.minus(p.times(n - 1)) : p,
+      interest: new Big(0),
+    }));
   }
   const r = RATE_PER_INSTALLMENT;
   const g = r.plus(1).pow(n);
@@ -88,8 +118,7 @@ function amortize(a: Big, method: AmortizationMethod): { principal: Big; interes
   let balance = a;
   return Array.from({ length: n }, (_, i) => {
     const interest = balance.times(r).round(2);
-    const principal =
-      i === n - 1 ? balance : method === 'french' ? payment.minus(interest) : fixedPrincipal;
+    const principal = i === n - 1 ? balance : method === 'french' ? payment.minus(interest) : fixedPrincipal;
     balance = balance.minus(principal);
     return { principal, interest };
   });
@@ -159,7 +188,8 @@ function buildQuote(principal: string) {
 
 type Quote = ReturnType<typeof buildQuote>;
 
-function createLoan(q: Quote): LoanDetail {
+function createLoan(q: Quote, opts: { inReview?: boolean } = {}): LoanDetail {
+  const withGrace = q.principal_usd.endsWith('.31');
   const id = `${state.loans.length + 1}`.padStart(8, '0') + '-0000-0000-0000-000000000000';
   const now = new Date().toISOString();
   const installments: LoanInstallment[] = q.installments.map((i) => ({
@@ -171,20 +201,23 @@ function createLoan(q: Quote): LoanDetail {
     interest_component_usd: i.interest_component_usd,
     fee_component_usd: i.fee_component_usd,
     total_amount_usd: i.total_amount_usd,
-    status: 'scheduled',
+    status: withGrace && i.sequence_number === 1 ? 'overdue' : 'scheduled',
     paid_principal_usd: '0.00',
     paid_fee_interest_usd: '0.00',
     mora_accrued_usd: '0.00',
     mora_paid_usd: '0.00',
     outstanding_usd: i.total_amount_usd,
-    overdue_since: null,
+    overdue_since: withGrace && i.sequence_number === 1 ? addDays(-1) : null,
     paid_at: null,
+    mora_grace_ends_on: withGrace ? (i.sequence_number === 1 ? addDays(GRACE_DAYS - 1) : i.due_date) : null,
+    in_mora_grace_period: withGrace && i.sequence_number === 1,
   }));
+  if (withGrace) installments[0].due_date = addDays(-1);
   const loan: LoanDetail = {
     id,
     employee_id: '00000000-0000-0000-0000-000000000001',
     credit_product_id: '00000000-0000-0000-0000-000000000002',
-    status: 'active',
+    status: opts.inReview ? 'disbursement_failed' : 'active',
     principal_usd: q.principal_usd,
     installments_count: q.installments_count,
     total_payable_usd: q.total_payable_usd,
@@ -196,14 +229,15 @@ function createLoan(q: Quote): LoanDetail {
     fees: q.fees.map((f) => ({ ...f, applied_on_installment: q.amortization_method === 'flat_prorated' ? null : 1 })),
     rate_percent_snapshot: q.amortization_method === 'flat_prorated' ? '8.000' : '2.000',
     payment_frequency_snapshot: 'monthly',
-    fx_rate_at_disbursement: RATE,
-    fx_rate_date: q.fx_rate_date,
+    fx_rate_at_disbursement: opts.inReview ? null : RATE,
+    fx_rate_date: opts.inReview ? null : q.fx_rate_date,
     requested_at: now,
-    disbursed_at: now,
+    disbursed_at: opts.inReview ? null : now,
     paid_off_at: null,
     created_at: now,
+    grace_period_days_snapshot: withGrace ? GRACE_DAYS : 0,
     installments,
-    receipt_download_url: SAMPLE_PDF,
+    receipt_download_url: opts.inReview ? null : SAMPLE_PDF,
   };
   state.loans.unshift(loan);
   return loan;
@@ -251,9 +285,28 @@ function profile(): Profile {
     credit_available_usd: new Big(state.limit).minus(u).toFixed(2),
     credit_agreement_signed: state.agreementSigned,
     payout_registered: !!state.payout,
-    payment_destination: { bank_code: '0171', phone: '04141234567', national_id: 'J-40123456-7' },
+    payment_destination: { bank_code: '0171', phone: '584141234567', national_id: 'J401234567' },
+    credit_product: PRODUCT,
   };
 }
+
+const PRODUCT = {
+  id: '00000000-0000-0000-0000-000000000002',
+  tenant_id: '00000000-0000-0000-0000-00000000000a',
+  name: 'Crédito de nómina',
+  funding_source: 'employer',
+  charge_model: 'flat_fee',
+  amortization_method: 'flat_prorated' as AmortizationMethod,
+  rate_percent: '8.000',
+  rate_period_months: null,
+  allowed_installments: [INSTALLMENTS_COUNT],
+  min_amount_usd: '20.00',
+  max_amount_usd: '500.00',
+  default_interest_percent: '24.000',
+  fees: [],
+  version: 1,
+  is_active: true,
+};
 
 function toLoan(l: LoanDetail): Loan {
   const { installments: _installments, receipt_download_url: _r, ...loan } = l;
@@ -295,7 +348,9 @@ export async function mockRequest(
   switch (true) {
     case route === 'POST /auth/login': {
       if (body.password !== state.password && body.password !== 'Demo1234')
-        return problem(401, 'No autorizado', 'Correo o contraseña incorrectos.', 'unauthorized');
+        return problem(401, 'No autenticado', 'Correo o contraseña inválidos.', 'unauthorized', {
+          reason: 'invalid_credentials',
+        });
       return json(200, { access_token: fakeJwt(), refresh_token: 'r', token_type: 'bearer' });
     }
     case route === 'GET /auth/me':
@@ -313,6 +368,8 @@ export async function mockRequest(
     case route === 'POST /auth/logout':
       return json(204, undefined);
     case route === 'POST /auth/change-password':
+      if (body.current_password !== state.password && body.current_password !== 'Demo1234')
+        return fieldProblem('current_password', 'invalid_current_password', 'La contraseña actual no es correcta.');
       state.password = body.new_password;
       state.mustChange = false;
       return json(204, undefined);
@@ -320,11 +377,37 @@ export async function mockRequest(
       return json(202, { message: 'Si el correo está registrado, enviamos un código de 6 dígitos.' });
     case route === 'POST /auth/password-reset/confirm':
       if (body.code && body.code !== '123456')
-        return problem(422, 'Código inválido', 'El código es inválido o expiró.', 'invalid_or_expired_code');
+        return fieldProblem('code', 'invalid_or_expired_code', 'El código es inválido o expiró.');
       if (body.new_password) state.password = body.new_password;
       return json(204, undefined);
     case route === 'GET /app/profile':
       return json(200, profile());
+    case route === 'GET /app/credit-products':
+      return json(200, [PRODUCT]);
+    case route === 'GET /app/sessions': {
+      const now = Date.now();
+      return json(200, [
+        {
+          family_id: 'f'.repeat(32),
+          ip: '190.202.10.4',
+          user_agent: headers['User-Agent'] ?? 'RealMedio/1.0.0 (Android 14; Demo)',
+          last_seen_at: new Date(now).toISOString(),
+          is_current: true,
+        },
+        ...Array.from({ length: state.otherSessions }, (_, k) => ({
+          family_id: `${k}`.padStart(32, 'a'),
+          ip: '186.24.7.91',
+          user_agent: 'RealMedio/1.0.0 (Android 13; Moto G)',
+          last_seen_at: new Date(now - 6 * 24 * 3600 * 1000).toISOString(),
+          is_current: false,
+        })),
+      ]);
+    }
+    case route === 'POST /app/sessions/revoke-others': {
+      const revoked = state.otherSessions;
+      state.otherSessions = 0;
+      return json(200, { revoked_count: revoked });
+    }
     case route === 'GET /app/credit-agreement':
       return json(200, {
         signed: state.agreementSigned,
@@ -400,7 +483,20 @@ export async function mockRequest(
       return json(200, buildQuote(body.principal_usd));
     case route === 'POST /app/loans': {
       const q = buildQuote(body.principal_usd);
-      if (q.would_be_rejected) return problem(422, 'Cupo insuficiente', q.rejection_reason!, 'credit_limit_exceeded');
+      if (state.loans.some((l) => l.status === 'disbursement_failed'))
+        return problem(
+          409,
+          'Conflicto',
+          'Tienes un desembolso en revisión; espera a que se resuelva antes de pedir otro.',
+          'conflict',
+          { reason: 'disbursement_pending_review' },
+        );
+      if (q.would_be_rejected)
+        return problem(422, 'Regla de negocio violada', q.rejection_reason!, 'business_rule_violation', {
+          credit_limit_usd: state.limit,
+          existing_principal_usd: used().toFixed(2),
+          requested_usd: q.principal_usd,
+        });
       if (q.principal_usd.endsWith('.14'))
         return problem(
           502,
@@ -408,7 +504,8 @@ export async function mockRequest(
           'El banco rechazó la transferencia. No se descontó nada de tu cupo.',
           'disbursement_failed',
         );
-      if (q.principal_usd.endsWith('.13'))
+      if (q.principal_usd.endsWith('.13')) {
+        const pending = createLoan(q, { inReview: true });
         return remember(
           202,
           {
@@ -417,10 +514,12 @@ export async function mockRequest(
             status: 202,
             code: 'disbursement_pending_review',
             detail:
-              'No pudimos confirmar tu desembolso con el banco a tiempo. Tu solicitud quedó registrada y un administrador la revisará en breve.',
+              'No pudimos confirmar tu desembolso con el banco a tiempo. Tu solicitud quedó registrada y un administrador la revisará en breve; no vuelvas a solicitar el mismo monto hasta que se resuelva.',
+            extra: { loan_id: pending.id },
           },
           true,
         );
+      }
       const loan = createLoan(q);
       return remember(200, {
         loan: toLoan(loan),
@@ -436,15 +535,40 @@ export async function mockRequest(
     }
     case /^POST \/app\/loans\/[^/]+\/payments$/.test(route): {
       const loanId = decodeURIComponent(path.split('/')[3]);
+      const refKey = `${body.payer_bank_code}:${body.reference}`;
+      if (state.usedReferences.has(refKey))
+        return problem(
+          409,
+          'Conflicto',
+          'Esta referencia de pago ya fue utilizada para aplicar un abono.',
+          'conflict',
+          { reason: 'reference_already_used' },
+        );
       const fail = String(body.reference).toUpperCase().startsWith('SIMFAIL');
       if (fail)
         return problem(
           422,
-          'El banco no pudo validar este pago',
-          'El banco no pudo validar este pago con los datos reportados. Verifica la referencia, el monto y la fecha.',
-          'payment_not_validated',
+          'Regla de negocio violada',
+          'El banco no pudo validar este pago con los datos reportados. Verifica la referencia, el monto y la fecha e intenta de nuevo.',
+          'business_rule_violation',
         );
       const loan = state.loans.find((x) => x.id === loanId);
+      if (!loan) return problem(404, 'Recurso no encontrado', 'Préstamo no encontrado.', 'not_found');
+      if (loan.status !== 'active')
+        return problem(409, 'Conflicto', 'Solo se puede abonar a un préstamo activo.', 'conflict');
+      const owed = loan.installments.reduce((a, i) => a.plus(i.status === 'paid' ? 0 : i.outstanding_usd), new Big(0));
+      if (new Big(body.amount_usd as string).gt(owed))
+        return problem(
+          422,
+          'Regla de negocio violada',
+          'El monto del abono supera la deuda total del préstamo.',
+          'business_rule_violation',
+          {
+            outstanding_usd: owed.toFixed(2),
+            amount_usd: new Big(body.amount_usd as string).toFixed(2),
+          },
+        );
+      state.usedReferences.add(refKey);
       let toPrincipal = new Big(0);
       let toInterest = new Big(0);
       if (loan) {
@@ -479,6 +603,8 @@ export async function mockRequest(
         loan_id: loanId,
         amount_usd: body.amount_usd,
         provider_reference: body.reference,
+        // El banco devuelve su referencia canónica (puede diferir de la declarada; guía §10.2).
+        bank_reference: `0012${String(body.reference).padStart(8, '0')}`,
         confirmed_at: new Date().toISOString(),
         applied: {
           principal_usd: toPrincipal.toFixed(2),

@@ -42,7 +42,8 @@ export function AppLock() {
     const canLock = await canUseDeviceLock();
     const action = onResume({ backgroundedAt: backgroundedAt.current, now: Date.now(), canLock });
     backgroundedAt.current = null;
-    if (action === 'lock') setLocked(true);
+    // Se decide de nuevo en cada evaluación: un bloqueo viejo de otra sesión no queda pegado.
+    setLocked(action === 'lock');
     if (action === 'signOut') await signOut();
   }, [status, signOut]);
 
@@ -52,10 +53,7 @@ export function AppLock() {
       evaluated.current = true;
       void evaluate();
     }
-    if (status === 'signedOut') {
-      evaluated.current = false;
-      setLocked(false);
-    }
+    if (status === 'signedOut') evaluated.current = false;
   }, [status, evaluate]);
 
   useEffect(() => {
@@ -78,10 +76,13 @@ export function AppLock() {
 
   // Al aparecer el bloqueo se pide la biometría de una vez, sin un toque extra.
   useEffect(() => {
-    if (locked) void unlock();
+    if (!locked) return;
+    const t = setTimeout(() => void unlock(), 0);
+    return () => clearTimeout(t);
   }, [locked, unlock]);
 
-  if (!locked) return null;
+  // Sin sesión no hay nada que proteger (el bloqueo se reevalúa al volver a entrar).
+  if (!locked || status !== 'signedIn') return null;
   return (
     <View style={styles.overlay} accessibilityViewIsModal>
       <Wordmark size="lg" light />
@@ -95,7 +96,13 @@ export function AppLock() {
             ? 'No pudimos confirmar que eres tú. Inténtalo de nuevo.'
             : 'Usa tu huella, rostro o el PIN del teléfono para continuar.'}
         </T>
-        <Button title="Desbloquear" icon="finger-print" onPress={unlock} loading={prompting} style={{ marginTop: space.lg }} />
+        <Button
+          title="Desbloquear"
+          icon="finger-print"
+          onPress={unlock}
+          loading={prompting}
+          style={{ marginTop: space.lg }}
+        />
         <Button
           title="Cerrar sesión"
           variant="outline"
